@@ -137,7 +137,7 @@ typedef struct _nty_coroutine_rbtree_wait nty_coroutine_rbtree_wait;
 #ifndef _USE_UCONTEXT
 typedef struct _nty_cpu_ctx {
 	void *esp;  // 栈指针
-	void *ebp;
+	void *ebp;  // 帧指针
 	void *eip;
 	void *edi;
 	void *esi;
