@@ -135,14 +135,14 @@ typedef struct _nty_coroutine_rbtree_wait nty_coroutine_rbtree_wait;
 
 
 #ifndef _USE_UCONTEXT
-typedef struct _nty_cpu_ctx {
+typedef struct _nty_cpu_ctx {  // 保存 CPU 寄存器状态的结构体
 	void *esp;  // 栈指针
 	void *ebp;  // 帧指针
-	void *eip;
-	void *edi;
+	void *eip;  // 指令指针
+	void *edi;  // edi、esi、ebx：通用寄存器
 	void *esi;
 	void *ebx;
-	void *r1;
+	void *r1;  // 扩展寄存器（r1 - r5）
 	void *r2;
 	void *r3;
 	void *r4;
@@ -150,7 +150,6 @@ typedef struct _nty_cpu_ctx {
 } nty_cpu_ctx;
 #endif
 
-///
 typedef struct _nty_schedule {
 	uint64_t birth;
 #ifdef _USE_UCONTEXT
