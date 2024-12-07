@@ -12,7 +12,12 @@ BIN = nty_server nty_client nty_bench nty_server_mulcore hook_tcpserver nty_http
 
 LIB = libntyco.a
 
-FLAG = -lpthread -O3 -ldl -I $(ROOT_DIR)/core 
+CFLAGS = -I/usr/include/tirpc
+CFLAGS += -I/usr/include/hiredis
+
+
+FLAG = -lpthread -O3 -ldl -I $(ROOT_DIR)/core
+
 
 THIRDFLAG = -lcrypto -lssl -lmysqlclient -lhiredis -I /usr/include/mysql/ -I /usr/local/include/hiredis/
 
@@ -38,6 +43,8 @@ $(SUB_DIR) : ECHO
 
 ECHO :
 	@echo $(SUB_DIR)
+	@echo "CFLAGS: $(CFLAGS)"
+
 
 check_objs:
 	if [ ! -d "objs" ]; then \
@@ -51,19 +58,19 @@ check_bin:
 
 
 nty_server : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_server.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 nty_client : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_client.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 nty_bench : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_bench.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $(CFLAGS) $^ $(FLAG)
 
 nty_server_mulcore : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_server_mulcore.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 nty_http_server : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_http_server.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 nty_websocket_server : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_websocket_server.c
 	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) $(THIRDFLAG)
@@ -75,16 +82,16 @@ nty_mysql_oper : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR
 	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) $(THIRDFLAG)
 
 nty_rediscli : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_rediscli.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) $(THIRDFLAG)
+	$(CC) -o $(BIN_DIR)/$@ $^ $(CFLAGS) $(FLAG) $(THIRDFLAG)
 
 hook_tcpserver: $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/hook_tcpserver.c
 	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 nty_http_server_mulcore : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/nty_http_server_mulcore.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 ntyco_httpd : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o $(SAMPLE_DIR)/ntyco_httpd.c
-	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG) 
+	$(CC) -o $(BIN_DIR)/$@ $^ $(FLAG)
 
 libntyco.a : $(OBJS_DIR)/nty_socket.o $(OBJS_DIR)/nty_coroutine.o $(OBJS_DIR)/nty_epoll.o $(OBJS_DIR)/nty_schedule.o
 	ar rcs $@ $^

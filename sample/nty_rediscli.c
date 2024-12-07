@@ -1,10 +1,4 @@
-
-
-
-
 #include "nty_coroutine.h"
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +9,7 @@ void coroutine_func(void *arg) {
     unsigned int j, isunix = 0;
     redisContext *c;
     redisReply *reply;
-    const char *hostname = "192.168.233.133";
+    const char *hostname = "127.0.0.1";
     int port = 6379;
 
     struct timeval timeout = { 1, 500000 }; // 1.5 seconds
