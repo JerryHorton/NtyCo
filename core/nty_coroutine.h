@@ -88,8 +88,8 @@
 
 typedef void (*proc_coroutine)(void *);
 
-
-typedef enum {  // 枚举类型定义了协程的状态、事件和调度的方式
+// 枚举类型定义了协程的状态、事件和调度的方式
+typedef enum {
 	NTY_COROUTINE_STATUS_WAIT_READ,  // 协程正在等待读事件
 	NTY_COROUTINE_STATUS_WAIT_WRITE,  // 协程正在等待写事件
 	NTY_COROUTINE_STATUS_NEW,  // 协程刚刚被创建，但还未被调度执行
@@ -108,22 +108,24 @@ typedef enum {  // 枚举类型定义了协程的状态、事件和调度的方�
 	NTY_COROUTINE_STATUS_WAIT_MULTI  // 协程正在等待多个事件，通常是多个IO事件或者多个条件的组合
 } nty_coroutine_status;
 
-typedef enum {  // 计算状态枚举：用于标识协程是否处于计算状态
+// 计算状态枚举：用于标识协程是否处于计算状态
+typedef enum {
 	NTY_COROUTINE_COMPUTE_BUSY,  // 正在忙碌
 	NTY_COROUTINE_COMPUTE_FREE  // 空闲
 } nty_coroutine_compute_status;
 
-typedef enum {  // 事件枚举：表示协程监听的事件类型
+// 事件枚举：表示协程监听的事件类型
+typedef enum {
 	NTY_COROUTINE_EV_READ,  // 读取事件
 	NTY_COROUTINE_EV_WRITE  // 写入事件
 } nty_coroutine_event;
 
 
-LIST_HEAD(_nty_coroutine_link, _nty_coroutine);
-TAILQ_HEAD(_nty_coroutine_queue, _nty_coroutine);
+LIST_HEAD(_nty_coroutine_link, _nty_coroutine);  // 链表（LIST_HEAD）：协程可以通过这些链表来管理其状态变化
+TAILQ_HEAD(_nty_coroutine_queue, _nty_coroutine);  // 队列（TAILQ_HEAD）：用于存储协程的准备队列、延迟队列等
 
-RB_HEAD(_nty_coroutine_rbtree_sleep, _nty_coroutine);
-RB_HEAD(_nty_coroutine_rbtree_wait, _nty_coroutine);
+RB_HEAD(_nty_coroutine_rbtree_sleep, _nty_coroutine);  // 红黑树（RB_HEAD）：用于存储按时间排序的休眠协程
+RB_HEAD(_nty_coroutine_rbtree_wait, _nty_coroutine);  // 红黑树（RB_HEAD）：用于存储按时间排序的等待协程
 
 
 
@@ -135,7 +137,8 @@ typedef struct _nty_coroutine_rbtree_wait nty_coroutine_rbtree_wait;
 
 
 #ifndef _USE_UCONTEXT
-typedef struct _nty_cpu_ctx {  // 保存 CPU 寄存器状态的结构体
+// 保存协程的CPU上下文（寄存器状态）
+typedef struct _nty_cpu_ctx {
 	void *esp;  // 栈指针
 	void *ebp;  // 帧指针
 	void *eip;  // 指令指针
@@ -147,93 +150,96 @@ typedef struct _nty_cpu_ctx {  // 保存 CPU 寄存器状态的结构体
 } nty_cpu_ctx;
 #endif
 
+// 协程调度器
 typedef struct _nty_schedule {
-	uint64_t birth;
+	uint64_t birth;  // 协程的创建时间
 #ifdef _USE_UCONTEXT
-	ucontext_t ctx;
+	ucontext_t ctx;  // 使用 ucontext_t 来保存当前协程的上下文
 #else
-	nty_cpu_ctx ctx;
+	nty_cpu_ctx ctx;  // 使用 nty_cpu_ctx 来手动管理协程的寄存器状态
 #endif
-	void *stack;
-	size_t stack_size;
-	int spawned_coroutines;
-	uint64_t default_timeout;
-	struct _nty_coroutine *curr_thread;
-	int page_size;
+	void *stack;  // 堆栈指针，指向协程使用的内存堆栈
+	size_t stack_size;  // 协程堆栈的大小
+	int spawned_coroutines;  // 已经创建并由调度器管理的协程数量
+	uint64_t default_timeout;  // 默认的超时时间，用于协程调度中的超时控制
+	struct _nty_coroutine *curr_thread;  // 当前正在执行的协程
+	int page_size;  // 操作系统页面的大小
 
-	int poller_fd;
-	int eventfd;
-	struct epoll_event eventlist[NTY_CO_MAX_EVENTS];
-	int nevents;
+	int poller_fd;  // 用于事件轮询的文件描述符
+	int eventfd;  // 事件文件描述符
+	struct epoll_event eventlist[NTY_CO_MAX_EVENTS];  // 保存从 epoll 获取的事件列表
+	int nevents;  // 当前事件的数量
 
-	int num_new_events;
-	pthread_mutex_t defer_mutex;
+	int num_new_events;  // 新事件的数量
+	pthread_mutex_t defer_mutex;  // 用于保护协程调度器中的延迟操作的互斥锁
 
-	nty_coroutine_queue ready;
-	nty_coroutine_queue defer;
+	nty_coroutine_queue ready;  // 准备好执行的协程队列
+	nty_coroutine_queue defer;  // 被推迟执行的协程队列
 
-	nty_coroutine_link busy;
+	nty_coroutine_link busy;  // 当前正在执行的协程链表
 	
-	nty_coroutine_rbtree_sleep sleeping;
-	nty_coroutine_rbtree_wait waiting;
+	nty_coroutine_rbtree_sleep sleeping;  // 处于休眠状态的协程的红黑树
+	nty_coroutine_rbtree_wait waiting;  // 处于等待状态的协程的红黑树
 
 	//private 
 
 } nty_schedule;
 
+// 协程
 typedef struct _nty_coroutine {
 
 	//private
 	
 #ifdef _USE_UCONTEXT
-	ucontext_t ctx;
+	ucontext_t ctx;  // 使用 ucontext_t 来保存协程的上下文
 #else
-	nty_cpu_ctx ctx;
+	nty_cpu_ctx ctx;  // 使用 nty_cpu_ctx 来保存协程的 CPU 寄存器状态
 #endif
-	proc_coroutine func;
-	void *arg;
-	void *data;
-	size_t stack_size;
-	size_t last_stack_size;
+	proc_coroutine func;  // 协程执行的函数指针,指向回调函数，当协程被调度时，这个函数会被执行
+	void *arg;  // 传递给协程执行函数的参数
+	void *data;  // 协程的额外数据字段
+	size_t stack_size;  // 协程的栈大小
+	size_t last_stack_size;  // 协程的上一栈大小,用于记录栈的大小变化
 	
-	nty_coroutine_status status;
-	nty_schedule *sched;
+	nty_coroutine_status status;  // 协程的当前状态
+	nty_schedule *sched;  // 指向协程调度器（nty_schedule）的指针,每个协程都与一个调度器相关联
 
-	uint64_t birth;
-	uint64_t id;
+	uint64_t birth;  // 协程的创建时间
+	uint64_t id;  // 协程的唯一标识符
 #if CANCEL_FD_WAIT_UINT64
-	int fd;
-	unsigned short events;  //POLL_EVENT
+    // 等待一个文件描述符（如套接字）上的某个事件
+	int fd;  // 文件描述符
+	unsigned short events;  // 事件（例如，POLL_READ 或 POLL_WRITE）
 #else
-	int64_t fd_wait;
+	int64_t fd_wait;  // 协程等待的文件描述符
 #endif
-	char funcname[64];
-	struct _nty_coroutine *co_join;
+	char funcname[64];  // 协程执行的函数的名称
+	struct _nty_coroutine *co_join;  // 指向另一个协程的指针,用于表示当前协程等待其他协程结束
 
-	void **co_exit_ptr;
-	void *stack;
-	void *ebp;
-	uint32_t ops;
-	uint64_t sleep_usecs;
+	void **co_exit_ptr;  // 指向退出值的指针,用于保存协程退出时返回的数据
+	void *stack;  // 协程的栈指针
+	void *ebp;  // 协程的帧指针
+	uint32_t ops;  // 协程的操作标志
+	uint64_t sleep_usecs;  // 协程的睡眠时间
 
-	RB_ENTRY(_nty_coroutine) sleep_node;
-	RB_ENTRY(_nty_coroutine) wait_node;
+	RB_ENTRY(_nty_coroutine) sleep_node;  // 红黑树节点，用于将协程按睡眠时间排序
+	RB_ENTRY(_nty_coroutine) wait_node;  // 红黑树节点，用于将协程按等待事件排序
 
-	LIST_ENTRY(_nty_coroutine) busy_next;
+	LIST_ENTRY(_nty_coroutine) busy_next;  // 链表节点，用于将进入 BUSY 状态的协程加入到正在忙碌协程队列中
 
-	TAILQ_ENTRY(_nty_coroutine) ready_next;
-	TAILQ_ENTRY(_nty_coroutine) defer_next;
-	TAILQ_ENTRY(_nty_coroutine) cond_next;
+	TAILQ_ENTRY(_nty_coroutine) ready_next;  // 队列节点，用于将进入 READY 状态的协程添加到准备好执行协程队列中
+	TAILQ_ENTRY(_nty_coroutine) defer_next;  // 队列节点，用于将因某些原因被延迟执行的协程添加到延迟协程队列中
+	TAILQ_ENTRY(_nty_coroutine) cond_next;  // 队列节点，用于将等待某个条件满足时被挂起的协程加入到条件变量协程队列中
+	TAILQ_ENTRY(_nty_coroutine) io_next;  // 队列节点，用于将进行 I/O 操作的协程加入到 I/O 等待协程队列中
+	TAILQ_ENTRY(_nty_coroutine) compute_next;  // 队列节点，用于将计算密集型任务的协程加入到计算协程队列中
 
-	TAILQ_ENTRY(_nty_coroutine) io_next;
-	TAILQ_ENTRY(_nty_coroutine) compute_next;
-
+    // 协程的 I/O 操作相关信息
 	struct {
-		void *buf;
-		size_t nbytes;
-		int fd;
-		int ret;
-		int err;
+		void *buf;  // 缓冲区，保存数据
+		size_t nbytes;  // 要读取或写入的字节数
+		int fd;  // 文件描述符，表示 I/O 操作的对象
+		int ret;  // I/O 操作的返回值
+		int err;  // I/O 操作的错误代码
 	} io;
 
 	struct _nty_coroutine_compute_sched *compute_sched;
