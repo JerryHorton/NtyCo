@@ -242,41 +242,45 @@ typedef struct _nty_coroutine {
 		int err;  // I/O 操作的错误代码
 	} io;
 
-	struct _nty_coroutine_compute_sched *compute_sched;
-	int ready_fds;
-	struct pollfd *pfds;
-	nfds_t nfds;
+	struct _nty_coroutine_compute_sched *compute_sched;  // 指向计算调度器的指针
+	int ready_fds;  // 协程准备好操作的文件描述符数量
+	struct pollfd *pfds;  // 指向 pollfd 结构的指针,用于表示协程需要进行的 I/O 操作及其相关的文件描述符
+	nfds_t nfds;  // pollfd 数组的大小,确定了需要处理的文件描述符数量
 } nty_coroutine;
 
-
+// 协程计算调度器
 typedef struct _nty_coroutine_compute_sched {
 #ifdef _USE_UCONTEXT
-	ucontext_t ctx;
+	ucontext_t ctx;  // 使用 ucontext_t 来保存调度器的上下文（如寄存器状态）
 #else
-	nty_cpu_ctx ctx;
+	nty_cpu_ctx ctx;  // 使用 nty_cpu_ctx 来保存调度器的 CPU 寄存器状态
 #endif
-	nty_coroutine_queue coroutines;
+	nty_coroutine_queue coroutines;  // 计算协程队列
 
-	nty_coroutine *curr_coroutine;
+	nty_coroutine *curr_coroutine;  // 当前正在执行的协程指针
 
-	pthread_mutex_t run_mutex;
-	pthread_cond_t run_cond;
+	pthread_mutex_t run_mutex;  // 用于控制计算协程调度器的互斥锁
+	pthread_cond_t run_cond;  // 用于同步协程调度的条件变量,用于控制计算调度器的等待与唤醒操作
 
-	pthread_mutex_t co_mutex;
-	LIST_ENTRY(_nty_coroutine_compute_sched) compute_next;
+	pthread_mutex_t co_mutex;  // 协程互斥锁。用于保护对协程的访问，确保协程的状态和操作不会被并发访问所破坏
+	LIST_ENTRY(_nty_coroutine_compute_sched) compute_next;  // 链表节点，用于将计算调度器连接到其他计算调度器队列中,将多个计算调度器按链表形式串联起来，从而形成一个调度器队列
 	
-	nty_coroutine_compute_status compute_status;
+	nty_coroutine_compute_status compute_status;  // 计算协程调度器的状态
 } nty_coroutine_compute_sched;
 
-extern pthread_key_t global_sched_key;
+extern pthread_key_t global_sched_key;  // 全局的线程局部存储（TLS）键 global_sched_key，用于存储与每个线程相关的调度器信息 (nty_schedule 结构体)
+
+/* 获取当前线程关联的调度器（nty_schedule */
 static inline nty_schedule *nty_coroutine_get_sched(void) {
 	return pthread_getspecific(global_sched_key);
 }
 
+/* 计算两个时间点（以微秒为单位）的差值 */
 static inline uint64_t nty_coroutine_diff_usecs(uint64_t t1, uint64_t t2) {
 	return t2-t1;
 }
 
+/* 获取当前的时间戳（以微秒为单位) */
 static inline uint64_t nty_coroutine_usec_now(void) {
 	struct timeval t1 = {0, 0};
 	gettimeofday(&t1, NULL);
@@ -287,7 +291,6 @@ static inline uint64_t nty_coroutine_usec_now(void) {
 
 
 int nty_epoller_create(void);
-
 
 void nty_schedule_cancel_event(nty_coroutine *co);
 void nty_schedule_sched_event(nty_coroutine *co, int fd, nty_coroutine_event e, uint64_t timeout);
