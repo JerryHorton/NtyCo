@@ -78,44 +78,44 @@
 #include "nty_queue.h"
 #include "nty_tree.h"
 
-#define NTY_CO_MAX_EVENTS		(1024*1024)
-#define NTY_CO_MAX_STACKSIZE	(128*1024) // {http: 16*1024, tcp: 4*1024}
+#define NTY_CO_MAX_EVENTS		(1024*1024)  // 最大事件数, 用于表示协程事件调度的容量
+#define NTY_CO_MAX_STACKSIZE	(128*1024)  // 最大栈大小,协程的栈大小 {http: 16*1024, tcp: 4*1024}
 
-#define BIT(x)	 				(1 << (x))
-#define CLEARBIT(x) 			~(1 << (x))
+#define BIT(x)	 				(1 << (x))  // 位操作宏，用于设置位(相或)
+#define CLEARBIT(x) 			~(1 << (x))  // 位操作宏，用于清除位(相与)
 
-#define CANCEL_FD_WAIT_UINT64	1
+#define CANCEL_FD_WAIT_UINT64	1  // 用于取消文件描述符的等待标志
 
 typedef void (*proc_coroutine)(void *);
 
 
-typedef enum {
-	NTY_COROUTINE_STATUS_WAIT_READ,
-	NTY_COROUTINE_STATUS_WAIT_WRITE,
-	NTY_COROUTINE_STATUS_NEW,
-	NTY_COROUTINE_STATUS_READY,
-	NTY_COROUTINE_STATUS_EXITED,
-	NTY_COROUTINE_STATUS_BUSY,
-	NTY_COROUTINE_STATUS_SLEEPING,
-	NTY_COROUTINE_STATUS_EXPIRED,
-	NTY_COROUTINE_STATUS_FDEOF,
-	NTY_COROUTINE_STATUS_DETACH,
-	NTY_COROUTINE_STATUS_CANCELLED,
-	NTY_COROUTINE_STATUS_PENDING_RUNCOMPUTE,
-	NTY_COROUTINE_STATUS_RUNCOMPUTE,
-	NTY_COROUTINE_STATUS_WAIT_IO_READ,
-	NTY_COROUTINE_STATUS_WAIT_IO_WRITE,
-	NTY_COROUTINE_STATUS_WAIT_MULTI
+typedef enum {  // 枚举类型定义了协程的状态、事件和调度的方式
+	NTY_COROUTINE_STATUS_WAIT_READ,  // 协程正在等待读事件
+	NTY_COROUTINE_STATUS_WAIT_WRITE,  // 协程正在等待写事件
+	NTY_COROUTINE_STATUS_NEW,  // 协程刚刚被创建，但还未被调度执行
+	NTY_COROUTINE_STATUS_READY,  // 协程已经准备好执行，等待调度器调度
+	NTY_COROUTINE_STATUS_EXITED,  // 协程已经退出执行
+	NTY_COROUTINE_STATUS_BUSY,  // 协程当前正在执行，忙于处理任务
+	NTY_COROUTINE_STATUS_SLEEPING,  // 协程正在休眠中
+	NTY_COROUTINE_STATUS_EXPIRED,  // 协程的超时时间已到，通常是协程在等待某些事件时设置了超时，超时后进入该状态
+	NTY_COROUTINE_STATUS_FDEOF,  // 协程正在等待某个文件描述符，但该描述符已到达文件结束符（EOF）当从文件或流中读取数据时，如果没有更多数据可以读取，协程会进入此状态。
+	NTY_COROUTINE_STATUS_DETACH,  // 协程被设置为“分离”状态，这意味着协程不会再与其他协程进行同步
+	NTY_COROUTINE_STATUS_CANCELLED,  // 协程已经被取消，通常是由调度器或其他协程调用取消操作
+	NTY_COROUTINE_STATUS_PENDING_RUNCOMPUTE,  // 协程处于计算任务待执行的状态
+	NTY_COROUTINE_STATUS_RUNCOMPUTE,  // 协程正在进行计算任务
+	NTY_COROUTINE_STATUS_WAIT_IO_READ,  // 协程正在等待IO读事件
+	NTY_COROUTINE_STATUS_WAIT_IO_WRITE,  // 协程正在等待IO写事件
+	NTY_COROUTINE_STATUS_WAIT_MULTI  // 协程正在等待多个事件，通常是多个IO事件或者多个条件的组合
 } nty_coroutine_status;
 
-typedef enum {
-	NTY_COROUTINE_COMPUTE_BUSY,
-	NTY_COROUTINE_COMPUTE_FREE
+typedef enum {  // 计算状态枚举：用于标识协程是否处于计算状态
+	NTY_COROUTINE_COMPUTE_BUSY,  // 正在忙碌
+	NTY_COROUTINE_COMPUTE_FREE  // 空闲
 } nty_coroutine_compute_status;
 
-typedef enum {
-	NTY_COROUTINE_EV_READ,
-	NTY_COROUTINE_EV_WRITE
+typedef enum {  // 事件枚举：表示协程监听的事件类型
+	NTY_COROUTINE_EV_READ,  // 读取事件
+	NTY_COROUTINE_EV_WRITE  // 写入事件
 } nty_coroutine_event;
 
 
