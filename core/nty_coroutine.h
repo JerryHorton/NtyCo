@@ -86,7 +86,7 @@
 
 #define CANCEL_FD_WAIT_UINT64	1  // 用于取消文件描述符的等待标志
 
-typedef void (*proc_coroutine)(void *);
+typedef void (*proc_coroutine)(void *);  // 协程回调函数类型
 
 // 枚举类型定义了协程的状态、事件和调度的方式
 typedef enum {
@@ -288,102 +288,291 @@ static inline uint64_t nty_coroutine_usec_now(void) {
 	return t1.tv_sec * 1000000 + t1.tv_usec;
 }
 
+/***************************************
+ * 协程调度器 (nty_schedule) 的核心 API
+ **************************************/
 
-
+/**
+ * 创建一个 epoll 实例，用于高效的事件监听
+ * 用于处理 I/O 事件的通知机制
+ *
+ * @return 成功返回 epoll 文件描述符，失败返回 -1
+ */
 int nty_epoller_create(void);
 
+/**
+ * 取消指定协程 (co) 的当前事件
+ * 当一个协程不再需要等待某个事件时，可以调用此函数取消事件的调度
+ *
+ * @param co 需要取消事件的协程
+ */
 void nty_schedule_cancel_event(nty_coroutine *co);
+
+/**
+ * 将指定协程 (co) 调度为等待事件
+ *
+ * @param co 需要等待的协程
+ * @param fd 要监听的文件描述符
+ * @param e 事件类型（如读事件或写事件，NTY_COROUTINE_EV_READ 或 NTY_COROUTINE_EV_WRITE）
+ * @param timeout 超时时间，如果超时没有发生事件，协程将被唤醒
+ */
 void nty_schedule_sched_event(nty_coroutine *co, int fd, nty_coroutine_event e, uint64_t timeout);
 
+/**
+ * 将指定协程 (co) 从当前的调度队列中移除，进入休眠状态
+ * 当一个协程需要休眠一段时间时，可以调用该函数将其移出调度队列，并将其加入到休眠队列中
+ *
+ * @param co 需要移除并休眠的协程
+ */
 void nty_schedule_desched_sleepdown(nty_coroutine *co);
+
+/**
+ * 将指定协程 (co) 调度为休眠状态，直到超时或被唤醒
+ *
+ * @param co 需要休眠的协程
+ * @param msecs 休眠时间（以毫秒为单位）
+ */
 void nty_schedule_sched_sleepdown(nty_coroutine *co, uint64_t msecs);
 
+/**
+ * 将当前协程从调度队列中移除，并使其进入等待状态，直到指定的文件描述符 (fd) 上
+ * 发生某个事件，不接受指定的事件类型，而是监听所有可以触发的事件
+ *
+ * @param fd 要监听的文件描述符
+ * @return 待调度的协程对象
+ */
 nty_coroutine* nty_schedule_desched_wait(int fd);
+
+/**
+ * 将指定协程 (co) 调度为等待指定的文件描述符 (fd) 上的特定事件
+ *
+ * @param co 需要等待的协程
+ * @param fd 要监听的文件描述符
+ * @param events 需要监听的事件（例如，读事件 POLLIN 或写事件 POLLOUT）
+ * @param timeout 超时时间
+ */
 void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, uint64_t timeout);
 
+/**
+ * 运行协程调度器，开始执行调度任务
+ */
 void nty_schedule_run(void);
 
+/**
+ * 注册一个触发器事件，用于唤醒 epoll 事件循环
+ *
+ * @return 返回一个整数，0 表示成功，负值表示失败
+ */
 int nty_epoller_ev_register_trigger(void);
+
+/**
+ * 等待指定的时间，用于在 epoll 事件循环中等待特定的事件发生，阻塞直到有
+ * 事件或者等待时间到达。如果没有事件，等待会持续到 timespec 中指定的时间
+ *
+ * @param t 等待时间
+ * @return 事件的数量，或者在超时的情况下返回 0
+ */
 int nty_epoller_wait(struct timespec t);
+
+/**
+ * 恢复一个挂起的协程，开始执行该协程
+ *
+ * @param co 要恢复的协程
+ * @return 返回 0 表示成功，负值表示失败
+ */
 int nty_coroutine_resume(nty_coroutine *co);
-void nty_coroutine_free(nty_coroutine *co);
-int nty_coroutine_create(nty_coroutine **new_co, proc_coroutine func, void *arg);
+
+/**
+ * 将当前协程挂起，让出执行权
+ *
+ * @param co 要挂起的协程
+ */
 void nty_coroutine_yield(nty_coroutine *co);
 
+/**
+ * 创建一个新的协程
+ *
+ * @param new_co 指向新的协程对象的指针
+ * @param func 协程执行的回调函数
+ * @param arg 传递给协程执行函数的参数
+ * @return 回 0 表示成功，负值表示失败
+ */
+int nty_coroutine_create(nty_coroutine **new_co, proc_coroutine func, void *arg);
+
+/**
+ * 销毁协程并释放资源
+ *
+ * @param co 要销毁的协程
+ */
+void nty_coroutine_free(nty_coroutine *co);
+
+/**
+ * 使当前协程进入休眠状态，暂停执行指定的时间
+ *
+ * @param msecs 协程需要休眠的时间（以毫秒为单位）
+ */
 void nty_coroutine_sleep(uint64_t msecs);
 
 
-int nty_socket(int domain, int type, int protocol);
-int nty_accept(int fd, struct sockaddr *addr, socklen_t *len);
-ssize_t nty_recv(int fd, void *buf, size_t len, int flags);
-ssize_t nty_send(int fd, const void *buf, size_t len, int flags);
-int nty_close(int fd);
-int nty_poll(struct pollfd *fds, nfds_t nfds, int timeout);
-int nty_connect(int fd, struct sockaddr *name, socklen_t namelen);
+/***************************************
+ * 网络编程相关的封装函数,针对协程环境进行
+ * 封装，以便更好地支持协程并发执行
+ **************************************/
 
+/**
+ * 创建一个套接字
+ *
+ * @param domain 套接字域（如 AF_INET 表示 IPv4 地址族）
+ * @param type 套接字类型（如 SOCK_STREAM 表示流套接字）
+ * @param protocol 协议类型（如 IPPROTO_TCP 表示 TCP 协议）
+ * @return 成功时返回一个新的套接字文件描述符；失败时返回 -1
+ */
+int nty_socket(int domain, int type, int protocol);
+
+/**
+ * 接受一个连接请求
+ *
+ * @param fd 监听套接字的文件描述符
+ * @param addr 用于接收客户端地址的结构
+ * @param len 地址长度的指针
+ * @return 成功时返回新的套接字文件描述符；失败时返回 -1
+ */
+int nty_accept(int fd, struct sockaddr *addr, socklen_t *len);
+
+/**
+ * 从指定的套接字读取数据
+ *
+ * @param fd 套接字文件描述符
+ * @param buf 接收数据的缓冲区
+ * @param len 要接收的最大字节数
+ * @param flags 标志位，通常为 0
+ * @return 成功时返回接收到的字节数；失败时返回 -1
+ */
+ssize_t nty_recv(int fd, void *buf, size_t len, int flags);
+
+/**
+ * 向指定的套接字发送数据
+ *
+ * @param fd 套接字文件描述符
+ * @param buf 包含要发送数据的缓冲区
+ * @param len 要发送的字节数
+ * @param flags 标志位，通常为 0
+ * @return 成功时返回实际发送的字节数；失败时返回 -1
+ */
+ssize_t nty_send(int fd, const void *buf, size_t len, int flags);
+
+/**
+ * 关闭套接字
+ *
+ * @param fd 要关闭的套接字文件描述符
+ * @return 成功时返回 0；失败时返回 -1
+ */
+int nty_close(int fd);
+
+/**
+ * 轮询一个或多个文件描述符，检查是否有 I/O 操作可以执行
+ *
+ * @param fds 指向 pollfd 结构数组的指针
+ * @param nfds 数组的大小
+ * @param timeout 超时时间
+ * @return 成功时返回活动的文件描述符数量；失败时返回 -1
+ */
+int nty_poll(struct pollfd *fds, nfds_t nfds, int timeout);
+
+/**
+ * 发起连接请求（通常用于客户端）
+ *
+ * @param fd 套接字文件描述符
+ * @param addr 目标地址信息
+ * @param len 目标地址的长度
+ * @return
+ */
+int nty_connect(int fd, const struct sockaddr *addr, socklen_t len);
+
+/**
+ * 向指定的地址发送数据（通常用于 UDP）
+ *
+ * @param fd 套接字文件描述符
+ * @param buf 包含要发送的数据的缓冲区
+ * @param len 要发送的字节数
+ * @param flags 标志位，通常为 0
+ * @param dest_addr 目标地址
+ * @param addrlen 目标地址的长度
+ * @return
+ */
 ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
                const struct sockaddr *dest_addr, socklen_t addrlen);
+
+/**
+ * 从指定的地址接收数据（通常用于 UDP）
+ *
+ * @param fd 套接字文件描述符
+ * @param buf 接收数据的缓冲区
+ * @param len 要接收的最大字节数
+ * @param flags 标志位，通常为 0
+ * @param src_addr 接收数据的源地址
+ * @param addrlen 源地址的长度
+ * @return
+ */
 ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                  struct sockaddr *src_addr, socklen_t *addrlen);
 
 
-#define COROUTINE_HOOK 
+#define COROUTINE_HOOK
 
 #ifdef  COROUTINE_HOOK
 
+/***************************************
+ * 定义了一系列函数指针类型，并声明了与这些
+ * 类型对应的外部函数指针变量。通过这些函数
+ * 指针，可以在运行时灵活地替换这些系统调用
+ * 的实现，用于钩子。
+ **************************************/
 
+/* socket 函数的替代 */
 typedef int (*socket_t)(int domain, int type, int protocol);
 extern socket_t socket_f;
 
+/* connect 函数的替代 */
 typedef int(*connect_t)(int, const struct sockaddr *, socklen_t);
 extern connect_t connect_f;
 
+/* read 函数的替代 */
 typedef ssize_t(*read_t)(int, void *, size_t);
 extern read_t read_f;
 
-
+/* recv 函数的替代 */
 typedef ssize_t(*recv_t)(int sockfd, void *buf, size_t len, int flags);
 extern recv_t recv_f;
 
+/* recvfrom_f 函数的替代 */
 typedef ssize_t(*recvfrom_t)(int sockfd, void *buf, size_t len, int flags,
         struct sockaddr *src_addr, socklen_t *addrlen);
 extern recvfrom_t recvfrom_f;
 
+/* write 函数的替代 */
 typedef ssize_t(*write_t)(int, const void *, size_t);
 extern write_t write_f;
 
+/* send 函数的替代 */
 typedef ssize_t(*send_t)(int sockfd, const void *buf, size_t len, int flags);
 extern send_t send_f;
 
+/* sendto 函数的替代 */
 typedef ssize_t(*sendto_t)(int sockfd, const void *buf, size_t len, int flags,
         const struct sockaddr *dest_addr, socklen_t addrlen);
 extern sendto_t sendto_f;
 
+/* accept 函数的替代 */
 typedef int(*accept_t)(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 extern accept_t accept_f;
 
-// new-syscall
+/* close 函数的替代 */
 typedef int(*close_t)(int);
 extern close_t close_f;
 
-
+/* 初始化钩子 */
 int init_hook(void);
-
-
-/*
-
-typedef int(*fcntl_t)(int __fd, int __cmd, ...);
-extern fcntl_t fcntl_f;
-
-typedef int (*getsockopt_t)(int sockfd, int level, int optname,
-        void *optval, socklen_t *optlen);
-extern getsockopt_t getsockopt_f;
-
-typedef int (*setsockopt_t)(int sockfd, int level, int optname,
-        const void *optval, socklen_t optlen);
-extern setsockopt_t setsockopt_f;
-
-*/
 
 #endif
 
