@@ -194,44 +194,43 @@ void nty_coroutine_free(nty_coroutine *co) {
     free(co);  // 释放协程对象本身
 }
 
+/* 初始化协程 */
 static void nty_coroutine_init(nty_coroutine *co) {
 
-#ifdef _USE_UCONTEXT
-    getcontext(&co->ctx);
-    co->ctx.uc_stack.ss_sp = co->sched->stack;
-    co->ctx.uc_stack.ss_size = co->sched->stack_size;
-    co->ctx.uc_link = &co->sched->ctx;
-    // printf("TAG21\n");
-    makecontext(&co->ctx, (void (*)(void)) _exec, 1, (void *) co);
-    // printf("TAG22\n");
-#else
-    void **stack = (void **)(co->stack + co->stack_size);
+#ifdef _USE_UCONTEXT  // 使用 ucontext 实现协程
+    getcontext(&co->ctx);  // 获取当前上下文（包括堆栈等）
+    co->ctx.uc_stack.ss_sp = co->sched->stack;  // 设置栈空间指针
+    co->ctx.uc_stack.ss_size = co->sched->stack_size;  // 设置栈空间大小
+    co->ctx.uc_link = &co->sched->ctx;  // 设置上下文链接，在协程退出时会切换回调度器上下文
+    makecontext(&co->ctx, (void (*)(void)) _exec, 1, (void *) co);  // 设置协程函数（_exec）和参数
 
-    stack[-3] = NULL;
-    stack[-2] = (void *)co;
+#else  // 使用自定义方式实现协程
+    void **stack = (void **)(co->stack + co->stack_size);  // 指向协程栈的顶部
 
-    co->ctx.esp = (void*)stack - (4 * sizeof(void*));
-    co->ctx.ebp = (void*)stack - (3 * sizeof(void*));
-    co->ctx.eip = (void*)_exec;
+    stack[-3] = NULL;  // 保存空值，确保栈的正确性
+    stack[-2] = (void *)co;  // 保存协程对象指针到栈中（用于执行时获取上下文）
+
+    co->ctx.esp = (void*)stack - (4 * sizeof(void*));  // 设置栈指针
+    co->ctx.ebp = (void*)stack - (3 * sizeof(void*));  // 设置帧指针
+    co->ctx.eip = (void*)_exec;  // 设置程序计数器为 `_exec` 函数
 #endif
-    co->status = BIT(NTY_COROUTINE_STATUS_READY);
-
+    co->status = BIT(NTY_COROUTINE_STATUS_READY);  // 将协程的状态设置为就绪态
 }
 
+/* 挂起协程 */
 void nty_coroutine_yield(nty_coroutine *co) {
-    co->ops = 0;
-#ifdef _USE_UCONTEXT
-    if ((co->status & BIT(NTY_COROUTINE_STATUS_EXITED)) == 0) {
-        _save_stack(co);
+    co->ops = 0;  // 重置协程的操作标志，表示不再进行其他操作
+#ifdef _USE_UCONTEXT  // 使用 ucontext 切换上下文 (swapcontext)
+    if ((co->status & BIT(NTY_COROUTINE_STATUS_EXITED)) == 0) {  // 协程没有退出则需要保存协程的栈信息
+        _save_stack(co);  // 保存协程的栈信息，确保栈的内容在协程切换时不丢失
     }
-    swapcontext(&co->ctx, &co->sched->ctx);
+    swapcontext(&co->ctx, &co->sched->ctx);  // 切换上下文
 #else
-    _switch(&co->sched->ctx, &co->ctx);
+    _switch(&co->sched->ctx, &co->ctx);  // 手动实现的上下文切换函数进行低级的协程切换
 #endif
 }
 
 int nty_coroutine_resume(nty_coroutine *co) {
-
     if (co->status & BIT(NTY_COROUTINE_STATUS_NEW)) {
         nty_coroutine_init(co);
     }

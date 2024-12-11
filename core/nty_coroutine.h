@@ -157,9 +157,9 @@ typedef struct _nty_cpu_ctx {
 typedef struct _nty_schedule {
     uint64_t birth;  // 协程的创建时间
 #ifdef _USE_UCONTEXT
-    ucontext_t ctx;  // 使用 ucontext_t 来保存当前协程的上下文
+    ucontext_t ctx;  // 使用 ucontext_t 来保存调度器的上下文
 #else
-    nty_cpu_ctx ctx;  // 使用 nty_cpu_ctx 来手动管理协程的寄存器状态
+    nty_cpu_ctx ctx;  // 使用 nty_cpu_ctx 来手动管理调度器的寄存器状态
 #endif
     void *stack;  // 堆栈指针即协程的栈基址，指向协程使用的内存堆栈，
     size_t stack_size;  // 协程堆栈的总大小
