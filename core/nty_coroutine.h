@@ -93,22 +93,38 @@ typedef void (*proc_coroutine)(void *);  // 协程回调函数类型
 
 // 枚举类型定义了协程的状态、事件和调度的方式
 typedef enum {
-    NTY_COROUTINE_STATUS_WAIT_READ,  // 协程正在等待读事件
-    NTY_COROUTINE_STATUS_WAIT_WRITE,  // 协程正在等待写事件
-    NTY_COROUTINE_STATUS_NEW,  // 协程刚刚被创建，但还未被调度执行
-    NTY_COROUTINE_STATUS_READY,  // 协程已经准备好执行，等待调度器调度
-    NTY_COROUTINE_STATUS_EXITED,  // 协程已经退出执行
-    NTY_COROUTINE_STATUS_BUSY,  // 协程当前正在执行，忙于处理任务
-    NTY_COROUTINE_STATUS_SLEEPING,  // 协程正在休眠中
-    NTY_COROUTINE_STATUS_EXPIRED,  // 协程的超时时间已到，通常是协程在等待某些事件时设置了超时，超时后进入该状态
-    NTY_COROUTINE_STATUS_FDEOF,  // 协程正在等待某个文件描述符，但该描述符已到达文件结束符（EOF）当从文件或流中读取数据时，如果没有更多数据可以读取，协程会进入此状态。
-    NTY_COROUTINE_STATUS_DETACH,  // 协程被设置为“分离”状态，这意味着协程不会再与其他协程进行同步
-    NTY_COROUTINE_STATUS_CANCELLED,  // 协程已经被取消，通常是由调度器或其他协程调用取消操作
-    NTY_COROUTINE_STATUS_PENDING_RUNCOMPUTE,  // 协程处于计算任务待执行的状态
-    NTY_COROUTINE_STATUS_RUNCOMPUTE,  // 协程正在进行计算任务
-    NTY_COROUTINE_STATUS_WAIT_IO_READ,  // 协程正在等待IO读事件
-    NTY_COROUTINE_STATUS_WAIT_IO_WRITE,  // 协程正在等待IO写事件
-    NTY_COROUTINE_STATUS_WAIT_MULTI  // 协程正在等待多个事件，通常是多个IO事件或者多个条件的组合
+    // 协程正在等待读事件
+    NTY_COROUTINE_STATUS_WAIT_READ,
+    // 协程正在等待写事件
+    NTY_COROUTINE_STATUS_WAIT_WRITE,
+    // 协程刚刚被创建，但还未被调度执行
+    NTY_COROUTINE_STATUS_NEW,
+    // 协程已经准备好执行，等待调度器调度
+    NTY_COROUTINE_STATUS_READY,
+    // 协程已经退出执行
+    NTY_COROUTINE_STATUS_EXITED,
+    // 协程当前正在执行，忙于处理任务
+    NTY_COROUTINE_STATUS_BUSY,
+    // 协程正在休眠中
+    NTY_COROUTINE_STATUS_SLEEPING,
+    // 协程的超时时间已到，通常是协程在等待某些事件时设置了超时，超时后进入该状态
+    NTY_COROUTINE_STATUS_EXPIRED,
+    // 协程正在等待某个文件描述符，但该描述符已到达文件结束符（EOF）当从文件或流中读取数据时，如果没有更多数据可以读取，协程会进入此状态。
+    NTY_COROUTINE_STATUS_FDEOF,
+    // 协程被设置为“分离”状态，这意味着协程不会再与其他协程进行同步
+    NTY_COROUTINE_STATUS_DETACH,
+    // 协程已经被取消，通常是由调度器或其他协程调用取消操作
+    NTY_COROUTINE_STATUS_CANCELLED,
+    // 协程处于计算任务待执行的状态
+    NTY_COROUTINE_STATUS_PENDING_RUNCOMPUTE,
+    // 协程正在进行计算任务
+    NTY_COROUTINE_STATUS_RUNCOMPUTE,
+    // 协程正在等待IO读事件
+    NTY_COROUTINE_STATUS_WAIT_IO_READ,
+    // 协程正在等待IO写事件
+    NTY_COROUTINE_STATUS_WAIT_IO_WRITE,
+    // 协程正在等待多个事件，通常是多个IO事件或者多个条件的组合
+    NTY_COROUTINE_STATUS_WAIT_MULTI
 } nty_coroutine_status;
 
 // 计算状态枚举：用于标识协程是否处于计算状态
@@ -272,7 +288,7 @@ typedef struct _nty_coroutine_compute_sched {
 
 extern pthread_key_t global_sched_key;  // 全局的线程局部存储（TLS）键 global_sched_key，用于存储与每个线程相关的调度器信息 (nty_schedule 结构体)
 
-/* 获取当前线程关联的调度器（nty_schedule */
+/* 获取当前线程关联的调度器（nty_schedule） */
 static inline nty_schedule *nty_coroutine_get_sched(void) {
     return pthread_getspecific(global_sched_key);
 }

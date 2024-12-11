@@ -108,8 +108,8 @@ __asm__ (
 "       movl %eax, (%esp)       # 将返回地址写入栈顶                        \n"
 "       ret                     # 跳转到目标协程的返回地址                   \n"
 );
-#elif defined(__x86_64__)
 
+#elif defined(__x86_64__)
 __asm__ (
 "    .text                                                     \n"
 "       .p2align 4,,15                                         \n"
@@ -137,11 +137,11 @@ __asm__ (
 "       movq %rax, (%rsp)       # 将返回地址写入栈顶              \n"
 "       ret                     # 返回新任务的执行地址            \n"
 );
-
 #endif
 
 /* 协程执行 */
 static void _exec(void *lt) {
+
 #if defined(__lvm__) && defined(__x86_64__)
     __asm__("movq 16(%%rbp), %[lt]" : [lt] "=r" (lt));  // 用汇编显式读取栈帧中的参数
 #endif
@@ -167,7 +167,6 @@ static inline void nty_coroutine_madvise(nty_coroutine *co) {
     }
     co->last_stack_size = current_stack; //  更新记录的栈大小，供下次调用时比较
 }
-
 #endif
 
 extern int nty_schedule_create(int stack_size);
@@ -214,6 +213,7 @@ static void nty_coroutine_init(nty_coroutine *co) {
     co->ctx.ebp = (void*)stack - (3 * sizeof(void*));  // 设置帧指针
     co->ctx.eip = (void*)_exec;  // 设置程序计数器为 `_exec` 函数
 #endif
+
     co->status = BIT(NTY_COROUTINE_STATUS_READY);  // 将协程的状态设置为就绪态
 }
 
@@ -230,33 +230,32 @@ void nty_coroutine_yield(nty_coroutine *co) {
 #endif
 }
 
+/* 恢复或启动协程的执行 */
 int nty_coroutine_resume(nty_coroutine *co) {
-    if (co->status & BIT(NTY_COROUTINE_STATUS_NEW)) {
-        nty_coroutine_init(co);
+    if (co->status & BIT(NTY_COROUTINE_STATUS_NEW)) {  // 如果协程处于 "新建" 状态
+        nty_coroutine_init(co);  // 初始化协程（主要是初始化栈、上下文等）
     }
 #ifdef _USE_UCONTEXT
     else {
-        _load_stack(co);
+        _load_stack(co);  // 如果使用 ucontext，加载栈信息（恢复协程栈）
     }
 #endif
-    nty_schedule * sched = nty_coroutine_get_sched();
-    sched->curr_thread = co;
+    nty_schedule *sched = nty_coroutine_get_sched();  // 获取调度器
+    sched->curr_thread = co;  // 设置当前正在执行的线程为该协程
 #ifdef _USE_UCONTEXT
-    swapcontext(&sched->ctx, &co->ctx);
+    swapcontext(&sched->ctx, &co->ctx);  // 使用 ucontext 切换上下文到协程的上下文
 #else
-    _switch(&co->ctx, &co->sched->ctx);
-    nty_coroutine_madvise(co);
+    _switch(&co->ctx, &co->sched->ctx);  // 使用自定义的 _switch 切换到协程的上下文
+    nty_coroutine_madvise(co);  // 执行栈的内存管理优化（如果需要）
 #endif
-    sched->curr_thread = NULL;
+    sched->curr_thread = NULL;  // 协程执行完后，重置调度器的当前线程
 
-#if 1
-    if (co->status & BIT(NTY_COROUTINE_STATUS_EXITED)) {
+    if (co->status & BIT(NTY_COROUTINE_STATUS_EXITED)) {  // 如果协程已退出
         if (co->status & BIT(NTY_COROUTINE_STATUS_DETACH)) {
             nty_coroutine_free(co);
         }
         return -1;
     }
-#endif
     return 0;
 }
 
