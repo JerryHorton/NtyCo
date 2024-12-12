@@ -259,97 +259,90 @@ int nty_coroutine_resume(nty_coroutine *co) {
     return 0;  // 协程成功恢复，返回 0
 }
 
-
+/* 通过操作计数 (ops) 来判断是否需要将当前协程的控制权交还给调度器，并将协程重新放回调度队列 */
 void nty_coroutine_renice(nty_coroutine *co) {
-    co->ops++;
-#if 1
-    if (co->ops < 5) return;
-#endif
-    TAILQ_INSERT_TAIL(&nty_coroutine_get_sched()->ready, co, ready_next);
-    nty_coroutine_yield(co);
+    co->ops++;  // 增加协程的 ops 计数器
+    if (co->ops < 5) {
+        return;
+    }
+    TAILQ_INSERT_TAIL(&nty_coroutine_get_sched()->ready, co, ready_next);  // 当前协程插入到调度器的就绪队列 (ready) 的尾部
+    nty_coroutine_yield(co);  // 让出当前协程的执行权，交还给调度器
 }
 
-
+/* 协程的睡眠机制 */
 void nty_coroutine_sleep(uint64_t msecs) {
-    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;
-
-    if (msecs == 0) {
-        TAILQ_INSERT_TAIL(&co->sched->ready, co, ready_next);
-        nty_coroutine_yield(co);
+    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;  // 获取当前正在运行的协程
+    if (msecs == 0) {  // 休眠时间为 0，协程只让出 CPU，但不进入睡眠状态，会在下一轮调度时再次执行
+        TAILQ_INSERT_TAIL(&co->sched->ready, co, ready_next);  // 直接将当前协程插入调度器的就绪队列
+        nty_coroutine_yield(co);  // 让出当前协程的执行权
     } else {
-        nty_schedule_sched_sleepdown(co, msecs);
+        nty_schedule_sched_sleepdown(co, msecs);  // 协程加入到调度器的睡眠队列中，并设置一个定时器，用于唤醒该协程
     }
 }
 
+/* 设置当前协程分离（detach）状态 */
 void nty_coroutine_detach(void) {
-    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;
-    co->status |= BIT(NTY_COROUTINE_STATUS_DETACH);
+    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;  // 获取当前正在运行的协程
+    co->status |= BIT(NTY_COROUTINE_STATUS_DETACH);  // 将协程的状态标志位设置为分离状态
 }
 
+/* 释放协程调度器的资源 */
 static void nty_coroutine_sched_key_destructor(void *data) {
     free(data);
 }
 
-static void __attribute__((constructor(1000))) nty_coroutine_sched_key_creator(void) {
-    assert(pthread_key_create(&global_sched_key, nty_coroutine_sched_key_destructor) == 0);
-    assert(pthread_setspecific(global_sched_key, NULL) == 0);
-
+/* 全局初始化操作 */
+static void __attribute__((constructor(1000))) nty_coroutine_sched_key_creator(void) {  // 标记函数为构造函数，会在程序执行 main 函数之前自动调用
+    assert(pthread_key_create(&global_sched_key, nty_coroutine_sched_key_destructor) == 0);  // 创建一个线程局部存储（TLS）键 global_sched_key，为每个线程分配独立的存储空间
+    assert(pthread_setspecific(global_sched_key, NULL) == 0);  // 初始化时明确指定键值为空，避免使用未初始化的值
     return;
 }
 
-
-// coroutine --> 
-// create 
-//
+/* 创建新的协程对象 */
 int nty_coroutine_create(nty_coroutine **new_co, proc_coroutine func, void *arg) {
+    assert(pthread_once(&sched_key_once, nty_coroutine_sched_key_creator) == 0);  // 确保调度器键 global_sched_key 和析构函数已经正确注册
+    nty_schedule * sched = nty_coroutine_get_sched();  // 获取当前线程的调度器
 
-    assert(pthread_once(&sched_key_once, nty_coroutine_sched_key_creator) == 0);
-    nty_schedule * sched = nty_coroutine_get_sched();
-
-    if (sched == NULL) {
-        nty_schedule_create(0);
-
-        sched = nty_coroutine_get_sched();
-        if (sched == NULL) {
+    if (sched == NULL) {  // 当前线程还没有关联调度器，则创建新的调度器
+        nty_schedule_create(0);  // 创建调度器
+        sched = nty_coroutine_get_sched();  // 重新获取当前线程调度器
+        if (sched == NULL) {  // 调度器创建失败
             printf("Failed to create scheduler\n");
             return -1;
         }
     }
-
-    nty_coroutine *co = calloc(1, sizeof(nty_coroutine));
-    if (co == NULL) {
+    nty_coroutine *co = calloc(1, sizeof(nty_coroutine));  // 分配协程对象
+    if (co == NULL) {  // 内存分配失败
         printf("Failed to allocate memory for new coroutine\n");
         return -2;
     }
 
-#ifdef _USE_UCONTEXT
+#ifdef _USE_UCONTEXT  // 使用 ucontext，栈由调度器共享栈实现，无需为协程分配独立栈
     co->stack = NULL;
     co->stack_size = 0;
 #else
-    int ret = posix_memalign(&co->stack, getpagesize(), sched->stack_size);
-    if (ret) {
+    int ret = posix_memalign(&co->stack, getpagesize(), sched->stack_size);  // 为协程分配对齐到页面大小的独立栈
+    if (ret) {  // 栈分配失败
         printf("Failed to allocate stack for new coroutine\n");
         free(co);
         return -3;
     }
     co->stack_size = sched->stack_size;
 #endif
-    co->sched = sched;
-    co->status = BIT(NTY_COROUTINE_STATUS_NEW); //
-    co->id = sched->spawned_coroutines++;
-    co->func = func;
-#if CANCEL_FD_WAIT_UINT64
-    co->fd = -1;
-    co->events = 0;
+    co->sched = sched;  // 关联调度器
+    co->status = BIT(NTY_COROUTINE_STATUS_NEW);  // 设置新建状态
+    co->id = sched->spawned_coroutines++;  // 为协程分配一个唯一的 ID
+    co->func = func;  // 设置协程的执行函数
+#if CANCEL_FD_WAIT_UINT64  // 复杂的事件模型，则不使用简化的文件描述符等待字段
+    co->fd = -1;  // 协程等待的文件描述符
+    co->events = 0;  // 协程等待的事件类型
 #else
-    co->fd_wait = -1;
+    co->fd_wait = -1;  // 标记协程是否正在等待某个文件描述符的事件
 #endif
-    co->arg = arg;
-    co->birth = nty_coroutine_usec_now();
-    *new_co = co;
-
-    TAILQ_INSERT_TAIL(&co->sched->ready, co, ready_next);
-
+    co->arg = arg;  // 设置协程的执行函数的参数
+    co->birth = nty_coroutine_usec_now();  // 记录协程创建时的时间戳
+    *new_co = co;  // 创建的协程指针存储到 new_co 中，供调用者使用
+    TAILQ_INSERT_TAIL(&co->sched->ready, co, ready_next);  // 将协程加入调度器的 ready 队列，等待被调度执行
     return 0;
 }
 

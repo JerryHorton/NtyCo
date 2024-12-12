@@ -413,7 +413,7 @@ void nty_coroutine_yield(nty_coroutine *co);
  * @param new_co 指向新的协程对象的指针
  * @param func 协程执行的回调函数
  * @param arg 传递给协程执行函数的参数
- * @return 回 0 表示成功，负值表示失败
+ * @return 返回 0 表示成功，负值表示调失败
  */
 int nty_coroutine_create(nty_coroutine **new_co, proc_coroutine func, void *arg);
 
