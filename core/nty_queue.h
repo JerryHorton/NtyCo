@@ -48,18 +48,19 @@
 #include <sys/cdefs.h>
 
 #ifdef QUEUE_MACRO_DEBUG
-/* Store the last 2 places the queue element or head was altered */
+/* 调试链表或队列操作时记录它们最近被修改的位置（文件名和行号） */
 struct qm_trace {
-    char * lastfile;
-    int lastline;
-    char * prevfile;
-    int prevline;
+    char * lastfile;  // 最近一次修改的文件名
+    int lastline;     // 最近一次修改的行号
+    char * prevfile;  // 上一次修改的文件名
+    int prevline;     // 上一次修改的行号
 };
 
-#define	TRACEBUF	struct qm_trace trace;
-#define	TRASHIT(x)	do {(x) = (void *)-1;} while (0)
+#define	TRACEBUF	struct qm_trace trace;  // 为使用调试功能的结构体添加一个 struct qm_trace 成员
+#define	TRASHIT(x)	do {(x) = (void *)-1;} while (0)  // 将指针 x 设置为非法值 (void *)-1，用于标记该指针已被废弃
 
-#define	QMD_TRACE_HEAD(head) do {							\
+/* 更新链表或队列头节点的调试信息 trace，记录其被修改的位置 */
+#define	QMD_TRACE_HEAD(head) do {			       			\
     (head)->trace.prevline = (head)->trace.lastline;		\
     (head)->trace.prevfile = (head)->trace.lastfile;		\
     (head)->trace.lastline = __LINE__;						\

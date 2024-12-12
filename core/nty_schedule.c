@@ -46,7 +46,6 @@
 #include "nty_coroutine.h"
 
 
-
 #define FD_KEY(f,e) (((int64_t)(f) << (sizeof(int32_t) * 8)) | e)
 #define FD_EVENT(f) ((int32_t)(f))
 #define FD_ONLY(f) ((f) >> ((sizeof(int32_t) * 8)))
