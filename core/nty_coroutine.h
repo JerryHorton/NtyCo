@@ -337,10 +337,9 @@ void nty_schedule_cancel_event(nty_coroutine *co);
 void nty_schedule_sched_event(nty_coroutine *co, int fd, nty_coroutine_event e, uint64_t timeout);
 
 /**
- * 将指定协程 (co) 从当前的调度队列中移除，进入休眠状态
- * 当一个协程需要休眠一段时间时，可以调用该函数将其移出调度队列，并将其加入到休眠队列中
+ * 从调度器的睡眠队列中移除一个协程
  *
- * @param co 需要移除并休眠的协程
+ * @param co 需要移出的协程
  */
 void nty_schedule_desched_sleepdown(nty_coroutine *co);
 
