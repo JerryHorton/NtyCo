@@ -251,12 +251,12 @@ int nty_coroutine_resume(nty_coroutine *co) {
     sched->curr_thread = NULL;  // 协程执行完后，重置调度器的当前线程
 
     if (co->status & BIT(NTY_COROUTINE_STATUS_EXITED)) {  // 如果协程已退出
-        if (co->status & BIT(NTY_COROUTINE_STATUS_DETACH)) {
-            nty_coroutine_free(co);
+        if (co->status & BIT(NTY_COROUTINE_STATUS_DETACH)) {  // 协程已结束，不再需要管理
+            nty_coroutine_free(co);  // 释放协程资源
         }
-        return -1;
+        return -1;  // 协程已退出，返回 -1
     }
-    return 0;
+    return 0;  // 协程成功恢复，返回 0
 }
 
 

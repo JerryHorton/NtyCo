@@ -396,7 +396,7 @@ int nty_epoller_wait(struct timespec t);
  * 恢复一个挂起的协程，开始执行该协程
  *
  * @param co 要恢复的协程
- * @return 返回 0 表示成功，负值表示失败
+ * @return 返回 0 表示成功，负值表示协程已退出
  */
 int nty_coroutine_resume(nty_coroutine *co);
 
