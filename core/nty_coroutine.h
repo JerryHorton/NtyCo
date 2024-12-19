@@ -88,6 +88,7 @@
 #define CLEARBIT(x)            ~(1 << (x))  // 位操作宏，用于清除位(相与)
 
 #define CANCEL_FD_WAIT_UINT64    1  // 用于取消文件描述符的等待标志
+#define INVALID_TIMEOUT          1  // 无效超时时间
 
 typedef void (*proc_coroutine)(void *);  // 协程回调函数类型
 
@@ -337,7 +338,7 @@ void nty_schedule_cancel_event(nty_coroutine *co);
 void nty_schedule_sched_event(nty_coroutine *co, int fd, nty_coroutine_event e, uint64_t timeout);
 
 /**
- * 从调度器的睡眠队列中移除一个协程
+ * 从调度器的睡眠队列中移除一个协程，取消其休眠状态
  *
  * @param co 需要移出的协程
  */
@@ -352,21 +353,21 @@ void nty_schedule_desched_sleepdown(nty_coroutine *co);
 void nty_schedule_sched_sleepdown(nty_coroutine *co, uint64_t msecs);
 
 /**
- * 将当前协程从调度队列中移除，并使其进入等待状态，直到指定的文件描述符 (fd) 上
- * 发生某个事件，不接受指定的事件类型，而是监听所有可以触发的事件
+ * 将定的文件描述符 (fd) 上某个事件的协程从等待队列中移除
  *
  * @param fd 要监听的文件描述符
- * @return 待调度的协程对象
+ * @return 移出的协程
  */
 nty_coroutine *nty_schedule_desched_wait(int fd);
 
 /**
- * 将指定协程 (co) 调度为等待指定的文件描述符 (fd) 上的特定事件
+ * 将一个协程（co）注册到调度器的等待队列中，等待某个
+ * 文件描述符（fd）上的特定事件（events）（如可读、可写），并可能会涉及到超时机制
  *
  * @param co 需要等待的协程
  * @param fd 要监听的文件描述符
  * @param events 需要监听的事件（例如，读事件 POLLIN 或写事件 POLLOUT）
- * @param timeout 超时时间
+ * @param timeout 超时时间（以毫秒为单位）
  */
 void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, uint64_t timeout);
 

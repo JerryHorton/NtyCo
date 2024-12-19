@@ -110,49 +110,33 @@ void nty_schedule_sched_sleepdown(nty_coroutine *co, uint64_t msecs) {
     nty_coroutine_yield(co);  // 挂起当前协程
 }
 
+/* 从调度器的睡眠队列中移除一个协程并更新其状态 */
 void nty_schedule_desched_sleepdown(nty_coroutine *co) {
-    if (co->status & BIT(NTY_COROUTINE_STATUS_SLEEPING)) {
-        RB_REMOVE(_nty_coroutine_rbtree_sleep, &co->sched->sleeping, co);
-
-        co->status &= CLEARBIT(NTY_COROUTINE_STATUS_SLEEPING);
-        co->status |= BIT(NTY_COROUTINE_STATUS_READY);
-        co->status &= CLEARBIT(NTY_COROUTINE_STATUS_EXPIRED);
+    if (co->status & BIT(NTY_COROUTINE_STATUS_SLEEPING)) {  // 协程是否处于休眠状态
+        RB_REMOVE(_nty_coroutine_rbtree_sleep, &co->sched->sleeping, co);  // 从睡眠队列移除协程
+        co->status &= CLEARBIT(NTY_COROUTINE_STATUS_SLEEPING);  // 清除睡眠状态标志
+        co->status &= CLEARBIT(NTY_COROUTINE_STATUS_EXPIRED);  // 清除过期标志
+        co->status |= BIT(NTY_COROUTINE_STATUS_READY);  // 标记为就绪状态
     }
 }
 
+/* 从调度器的等待队列中查找与指定文件描述符 (fd) 相关联的协程 */
 nty_coroutine *nty_schedule_search_wait(int fd) {
-    nty_coroutine find_it = {0};
+    nty_coroutine find_it = {0};  // 构造一个虚拟协程用于搜索目标协程
     find_it.fd = fd;
-
-    nty_schedule * sched = nty_coroutine_get_sched();
-
-    nty_coroutine *co = RB_FIND(_nty_coroutine_rbtree_wait, &sched->waiting, &find_it);
-    co->status = 0;
-
-    return co;
-}
-
-nty_coroutine *nty_schedule_desched_wait(int fd) {
-
-    nty_coroutine find_it = {0};
-    find_it.fd = fd;
-
-    nty_schedule * sched = nty_coroutine_get_sched();
-
-    nty_coroutine *co = RB_FIND(_nty_coroutine_rbtree_wait, &sched->waiting, &find_it);
-    if (co != NULL) {
-        RB_REMOVE(_nty_coroutine_rbtree_wait, &co->sched->waiting, co);
+    nty_schedule *sched = nty_coroutine_get_sched();  // 获取当前线程的调度器
+    nty_coroutine *co = RB_FIND(_nty_coroutine_rbtree_wait, &sched->waiting, &find_it);  // 查找相关协程
+    if (co == NULL) {  // 未找到匹配协程
+        return NULL;
     }
     co->status = 0;
-    nty_schedule_desched_sleepdown(co);
-
     return co;
 }
 
+/* 将一个协程注册到调度器的等待队列中 */
 void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, uint64_t timeout) {
-
     if (co->status & BIT(NTY_COROUTINE_STATUS_WAIT_READ) ||
-        co->status & BIT(NTY_COROUTINE_STATUS_WAIT_WRITE)) {
+        co->status & BIT(NTY_COROUTINE_STATUS_WAIT_WRITE)) {  // 已经处于等待读取或写入的状态
         printf("Unexpected event. lt id %"
         PRIu64
         " fd %"
@@ -160,30 +144,39 @@ void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, u
         " already in %"
         PRId32
         " state\n",
-                co->id, co->fd, co->status);
-        assert(0);
+        co->id, co->fd, co->status);
+        assert(0);  // 强制触发程序崩溃
     }
-
-    if (events & POLLIN) {
-        co->status |= NTY_COROUTINE_STATUS_WAIT_READ;
-    } else if (events & POLLOUT) {
-        co->status |= NTY_COROUTINE_STATUS_WAIT_WRITE;
-    } else {
+    if (events & POLLIN) {  // 等待可读事件
+        co->status |= BIT(NTY_COROUTINE_STATUS_WAIT_READ);  // 设置协程状态为等待读
+    } else if (events & POLLOUT) {  // 等待可写事件
+        co->status |= BIT(NTY_COROUTINE_STATUS_WAIT_WRITE);  // 设置协程状态为等待写
+    } else {  // 非法事件
         printf("events : %d\n", events);
-        assert(0);
+        assert(0);  // 强制触发程序崩溃
     }
+    co->fd = fd;  // 设置等待事件所在的描述符
+    co->events = events;  // 设置等待事件
+    nty_coroutine *co_tmp = RB_INSERT(_nty_coroutine_rbtree_wait, &co->sched->waiting, co);  // 插入等待队列
+    assert(co_tmp == NULL);  // 插入失败（即协程已经在队列中）
+    printf("timeout --> %"
+    PRIu64
+    "\n", timeout);
+    if (timeout == INVALID_TIMEOUT) {
+        return;
+    }
+    nty_schedule_sched_sleepdown(co, timeout);  // 使协程进入睡眠状态，直到超时或事件发生
+}
 
-    co->fd = fd;
-    co->events = events;
-    nty_coroutine *co_tmp = RB_INSERT(_nty_coroutine_rbtree_wait, &co->sched->waiting, co);
-
-    assert(co_tmp == NULL);
-
-    //printf("timeout --> %"PRIu64"\n", timeout);
-    if (timeout == 1) return; //Error
-
-    nty_schedule_sched_sleepdown(co, timeout);
-
+/* 从调度器的等待队列中移除指定文件描述符 fd 对应的协程 */
+nty_coroutine *nty_schedule_desched_wait(int fd) {
+    nty_coroutine *co = nty_schedule_search_wait(fd);  // 等待队列中查找目标协程
+    if (co != NULL) {  // 查找到目标协程
+        RB_REMOVE(_nty_coroutine_rbtree_wait, &co->sched->waiting, co);  // 从等待队列中移除协程
+        co->status = 0;  // 重置状态
+        nty_schedule_desched_sleepdown(co);  // 解除睡眠状态
+    }
+    return co;
 }
 
 void nty_schedule_cancel_wait(nty_coroutine *co) {
