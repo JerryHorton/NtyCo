@@ -306,7 +306,7 @@ static int nty_schedule_epoll(nty_schedule *sched) {
     return 0;
 }
 
-/*  */
+/* 运行协程调度器，开始执行调度任务 */
 void nty_schedule_run(void) {
     nty_schedule * sched = nty_coroutine_get_sched();  // 获取当前线程绑定的调度器
     if (sched == NULL) {  // 调度器为空
