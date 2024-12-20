@@ -205,10 +205,8 @@ static void nty_coroutine_init(nty_coroutine *co) {
 
 #else  // 使用自定义方式实现协程
     void **stack = (void **)(co->stack + co->stack_size);  // 指向协程栈的顶部
-
     stack[-3] = NULL;  // 保存空值，确保栈的正确性
     stack[-2] = (void *)co;  // 保存协程对象指针到栈中（用于执行时获取上下文）
-
     co->ctx.esp = (void*)stack - (4 * sizeof(void*));  // 设置栈指针
     co->ctx.ebp = (void*)stack - (3 * sizeof(void*));  // 设置帧指针
     co->ctx.eip = (void*)_exec;  // 设置程序计数器为 `_exec` 函数

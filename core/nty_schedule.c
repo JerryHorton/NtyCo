@@ -274,90 +274,83 @@ static uint64_t nty_schedule_min_timeout(nty_schedule *sched) {
     return 0;
 }
 
+/* 通过 epoll 等待事件 */
 static int nty_schedule_epoll(nty_schedule *sched) {
-
-    sched->num_new_events = 0;
-
+    sched->num_new_events = 0;  // 将调度器中记录的新事件数量清零
     struct timespec t = {0, 0};
-    uint64_t usecs = nty_schedule_min_timeout(sched);
-    if (usecs && TAILQ_EMPTY(&sched->ready)) {
-        t.tv_sec = usecs / 1000000u;
-        if (t.tv_sec != 0) {
-            t.tv_nsec = (usecs % 1000u) * 1000u;
-        } else {
-            t.tv_nsec = usecs * 1000u;
+    uint64_t usecs = nty_schedule_min_timeout(sched);  // 获取调度器中最短的超时时间，即当前需要等待的最小时间
+    if (usecs && TAILQ_EMPTY(&sched->ready)) {  // 有有效的超时时间，并且调度器的就绪队列为空（没有协程需要立即运行），则计算具体的等待时间
+        t.tv_sec = usecs / 1000000u;  // 微秒转化为秒
+        if (t.tv_sec != 0) {  // 超时时间大于 1 秒
+            t.tv_nsec = (usecs % 1000000u) * 1000u;  // 将微秒中的剩余部分（不足一秒的部分）转化为纳秒
+        } else {  // 超时时间小于 1 秒
+            t.tv_nsec = usecs * 1000u;  // 直接将微秒转为纳秒
         }
-    } else {
+    } else {  // 没有有效的超时时间或者调度器中有可运行的协程，不进行任何等待
         return 0;
     }
-
     int nready = 0;
-    while (1) {
-        nready = nty_epoller_wait(t);
+    do {
+        nready = nty_epoller_wait(t);  // 等待事件
         if (nready == -1) {
-            if (errno == EINTR) continue;
-            else assert(0);
+            if (errno == EINTR) {  // 调用被信号中断
+                continue;
+            } else {  // 其他错误
+                assert(0);
+            }
         }
         break;
-    }
-
-    sched->nevents = 0;
-    sched->num_new_events = nready;
-
+    } while (1);
+    sched->nevents = 0;  // 调度器的事件计数重置为 0
+    sched->num_new_events = nready;  // 记录新事件的数量
     return 0;
 }
 
+/*  */
 void nty_schedule_run(void) {
-
-    nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) return;
-
-    while (!nty_schedule_isdone(sched)) {
-
-        // 1. expired --> sleep rbtree
+    nty_schedule * sched = nty_coroutine_get_sched();  // 获取当前线程绑定的调度器
+    if (sched == NULL) {  // 调度器为空
+        return;
+    }
+    while (!nty_schedule_isdone(sched)) {  // 调度器是未完成所有任务，说明有协程需要调度
+        // 1. 处理超时协程
         nty_coroutine *expired = NULL;
-        while ((expired = nty_schedule_expired(sched)) != NULL) {
-            nty_coroutine_resume(expired);
+        while ((expired = nty_schedule_expired(sched)) != NULL) {  // 从调度器的睡眠队列中获取已超时的协程
+            nty_coroutine_resume(expired);  // 恢复运行这些协程
         }
-        // 2. ready queue
-        nty_coroutine *last_co_ready = TAILQ_LAST(&sched->ready, _nty_coroutine_queue);
-        while (!TAILQ_EMPTY(&sched->ready)) {
-            nty_coroutine *co = TAILQ_FIRST(&sched->ready);
-            TAILQ_REMOVE(&co->sched->ready, co, ready_next);
-
-            if (co->status & BIT(NTY_COROUTINE_STATUS_FDEOF)) {
-                nty_coroutine_free(co);
+        // 2. 运行就绪队列中的协程
+        nty_coroutine *last_co_ready = TAILQ_LAST(&sched->ready, _nty_coroutine_queue);  // 获取就绪队列中的最后一个协程，标记队列的末尾，防止循环中新增协程导致无限循环
+        while (!TAILQ_EMPTY(&sched->ready)) {  // 就绪队列不为空
+            nty_coroutine *co = TAILQ_FIRST(&sched->ready);  // 获取就绪队列的第一个协程
+            TAILQ_REMOVE(&co->sched->ready, co, ready_next);  // 并从队列中移除
+            if (co->status & BIT(NTY_COROUTINE_STATUS_FDEOF)) {  // 如果协程处于 EOF（没有更多数据可以读取）状态
+                nty_coroutine_free(co);  // 释放并跳过
+                continue;
+            }
+            nty_coroutine_resume(co);  // 恢复协程的运行
+            if (co == last_co_ready) {  // 当前运行的协程是之前标记的最后一个协程，则退出循环，防止无限循环
                 break;
             }
-
-            nty_coroutine_resume(co);
-            if (co == last_co_ready) break;
         }
-
-        // 3. wait rbtree
-        nty_schedule_epoll(sched);
+        // 3. 处理等待队列中的协程
+        nty_schedule_epoll(sched);  // 从 epoll 等待队列中获取就绪的事件
         while (sched->num_new_events) {
             int idx = --sched->num_new_events;
-            struct epoll_event *ev = sched->eventlist + idx;
-
-            int fd = ev->data.fd;
+            struct epoll_event *ev = sched->eventlist + idx;  // 取出一个事件
+            int fd = ev->data.fd;  // 获取关联的文件描述符
             int is_eof = ev->events & EPOLLHUP;
-            if (is_eof) errno = ECONNRESET;
-
-            nty_coroutine *co = nty_schedule_search_wait(fd);
+            if (is_eof) {  // 事件包含 EPOLLHUP（挂起或连接断开）
+                errno = ECONNRESET;  // 连接被重置
+            }
+            nty_coroutine *co = nty_schedule_search_wait(fd);  // 找到等待该文件描述符的协程
             if (co != NULL) {
                 if (is_eof) {
                     co->status |= BIT(NTY_COROUTINE_STATUS_FDEOF);
                 }
-                nty_coroutine_resume(co);
+                nty_coroutine_resume(co);  // 唤醒并恢复执行
             }
-
-            is_eof = 0;
+            is_eof = 0;  // 重置为 0
         }
     }
-
-    nty_schedule_free(sched);
-
-    return;
+    nty_schedule_free(sched);  // 调度器是完成所有任务，释放调度器资源
 }
-
