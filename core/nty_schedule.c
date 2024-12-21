@@ -144,7 +144,7 @@ void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, u
         " already in %"
         PRId32
         " state\n",
-                co->id, co->fd, co->status);
+        co->id, co->fd, co->status);
         assert(0);  // 强制触发程序崩溃
     }
     if (events & POLLIN) {  // 等待可读事件
