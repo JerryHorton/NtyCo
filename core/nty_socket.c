@@ -65,6 +65,7 @@ static uint32_t nty_pollevent_2epoll(short events) {
     if (events & POLLWRNORM) {  // 普通数据的可写事件 POLLWRNORM -> EPOLLWRNORM
         e |= EPOLLWRNORM;
     }
+
     return e;
 }
 
@@ -89,6 +90,7 @@ static short nty_epollevent_2poll(uint32_t events) {
     if (events & EPOLLWRNORM) {  // 普通数据的可写事件 EPOLLWRNORM -> POLLWRNORM
         e |= POLLWRNORM;
     }
+
     return e;
 }
 
@@ -100,68 +102,74 @@ static int nty_poll_inner(struct pollfd *fds, nfds_t nfds, int timeout) {
     if (timeout < 0) {  // 超时时间为负，设置为最大值（无限等待）
         timeout = INT_MAX;
     }
-    nty_schedule *sched = nty_coroutine_get_sched();  // 获取当前线程的协程调度器
+
+    nty_schedule * sched = nty_coroutine_get_sched();  // 获取当前线程的协程调度器
     if (sched == NULL) {  // 调度器不存在，说明程序未正确初始化协程环境，直接返回错误
         printf("scheduler not exit!\n");
         return -1;
     }
+
     nty_coroutine *co = sched->curr_thread;  // 获取当前协程
     int i;
     for (i = 0; i < nfds; i++) {  // 遍历 fds 中的文件描述符，逐个注册到 epoll
         struct epoll_event ev;
         ev.events = nty_pollevent_2epoll(fds[i].events);  // 将poll事件转换为epoll事件
         ev.data.fd = fds[i].fd;
+
         epoll_ctl(sched->poller_fd, EPOLL_CTL_ADD, fds[i].fd, &ev);  // 注册文件描述符
+
         co->events = fds[i].events;
         nty_schedule_sched_wait(co, fds[i].fd, fds[i].events, timeout);  // 将当前协程加入等待队列
+
         epoll_ctl(sched->poller_fd, EPOLL_CTL_DEL, fds[i].fd, &ev);  // 从epoll中移除文件描述符
         nty_schedule_desched_wait(fds[i].fd);  // 将文件描述符从调度器的等待队列中移除
     }
+
     return nfds;  // 处理的文件描述符数量
 }
 
-
+/* 创建并初始化套接字 */
 int nty_socket(int domain, int type, int protocol) {
-
-    int fd = socket(domain, type, protocol);
-    if (fd == -1) {
+    int fd = socket(domain, type, protocol);  // 创建一个新的套接字
+    if (fd == -1) {  // 创建失败
         printf("Failed to create a new socket\n");
         return -1;
     }
-    int ret = fcntl(fd, F_SETFL, O_NONBLOCK);
-    if (ret == -1) {
-        close(ret);
+
+    int ret = fcntl(fd, F_SETFL, O_NONBLOCK);  // 设置套接字为非阻塞模式
+    if (ret == -1) {  // 设置失败
+        close(ret);  // 错误时关闭套接字
         return -1;
     }
-    int reuse = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));
+
+    int reuse = 1;  // 启用 SO_REUSEADDR 选项
+    ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));  // 设置 SO_REUSEADDR 选项，允许重用地址
+    if (ret == -1) {  // 设置失败
+        close(fd);  // 错误时关闭套接字
+        return -1;
+    }
 
     return fd;
 }
 
-//nty_accept 
-//return failed == -1, success > 0
-
+/* 非阻塞模式的 accept */
 int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
-    int sockfd = -1;
-    int timeout = 1;
+    int sockfd;
     nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;
-
     while (1) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLIN | POLLERR | POLLHUP;
-        nty_poll_inner(&fds, 1, timeout);
+        struct pollfd pfd;
+        pfd.fd = fd;  // 监听的文件描述符，即服务器的监听套接字
+        pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 检查是否有连接请求
 
-        sockfd = accept(fd, addr, len);
-        if (sockfd < 0) {
-            if (errno == EAGAIN) {
+        sockfd = accept(fd, addr, len);  // 尝试接受客户端连接
+        if (sockfd < 0) {  // accept 调用失败
+            if (errno == EAGAIN) {  // 如果是资源暂时不可用（EAGAIN），继续尝试
                 continue;
-            } else if (errno == ECONNABORTED) {
+            } else if (errno == ECONNABORTED) {  // 连接已经被对端中止
                 printf("accept : ECONNABORTED\n");
-
-            } else if (errno == EMFILE || errno == ENFILE) {
-                printf("accept : EMFILE || ENFILE\n");
+            } else if (errno == EMFILE || errno == ENFILE) {  // 进程已达到最大打开文件描述符数或已达到最大可打开文件描述符数
+                printf("accept : EMFILE or ENFILE\n");
             }
             return -1;
         } else {
@@ -169,37 +177,39 @@ int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
         }
     }
 
-    int ret = fcntl(sockfd, F_SETFL, O_NONBLOCK);
-    if (ret == -1) {
-        close(sockfd);
+    int ret = fcntl(sockfd, F_SETFL, O_NONBLOCK);  // 将新连接的套接字设置为非阻塞模式
+    if (ret == -1) {  // 设置失败
+        close(sockfd);  // 错误时关闭套接字
         return -1;
     }
-    int reuse = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));
 
+    int reuse = 1;  // 启用 SO_REUSEADDR 选项
+    ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));  // 设置 SO_REUSEADDR 选项，允许重用地址
+    if (ret == -1) {  // 设置失败
+        close(sockfd);  // 错误时关闭套接字
+        return -1;
+    }
     return sockfd;
 }
 
-
-int nty_connect(int fd, struct sockaddr *name, socklen_t namelen) {
-
-    int ret = 0;
-
+/* 非阻塞模式的 connect */
+int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
+    int ret;
     while (1) {
+        struct pollfd pfd;
+        pfd.fd = fd;  // 监听的文件描述符，即用于连接的套接字
+        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 检查对端是否可以接受连接请求
 
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
-        nty_poll_inner(&fds, 1, 1);
-
-        ret = connect(fd, name, namelen);
-        if (ret == 0) break;
-
-        if (ret == -1 && (errno == EAGAIN ||
+        ret = connect(fd, addr, addrlen);  // 发起连接
+        if (ret == 0) {  // 连接成功
+            break;
+        }
+        if (ret == -1 && (errno == EAGAIN ||  // 资源暂时不可用或连接正在进行中，继续尝试
                           errno == EWOULDBLOCK ||
                           errno == EINPROGRESS)) {
             continue;
-        } else {
+        } else {  // 其他错误
             break;
         }
     }

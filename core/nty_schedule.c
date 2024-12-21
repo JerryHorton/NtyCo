@@ -162,7 +162,7 @@ void nty_schedule_sched_wait(nty_coroutine *co, int fd, unsigned short events, u
     printf("timeout --> %"
     PRIu64
     "\n", timeout);
-    if (timeout == INVALID_TIMEOUT) {
+    if (timeout == NO_TIMEOUT) {
         return;
     }
     nty_schedule_sched_sleepdown(co, timeout);  // 使协程进入睡眠状态，直到超时或事件发生

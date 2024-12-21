@@ -88,7 +88,7 @@
 #define CLEARBIT(x)            ~(1 << (x))  // 位操作宏，用于清除位(相与)
 
 #define CANCEL_FD_WAIT_UINT64    1  // 用于取消文件描述符的等待标志
-#define INVALID_TIMEOUT          1  // 无效超时时间
+#define NO_TIMEOUT          1  // 无效超时时间，表示非阻塞行为
 
 typedef void (*proc_coroutine)(void *);  // 协程回调函数类型
 
