@@ -217,24 +217,28 @@ int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
     return ret;
 }
 
-//recv 
-// add epoll first
-//
+/* 非阻塞模式的 recv */
 ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
+    struct pollfd pfd;
+    pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+    pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 检查对端是否有数据可以读取
 
-    struct pollfd fds;
-    fds.fd = fd;
-    fds.events = POLLIN | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
-
-    int ret = recv(fd, buf, len, flags);
-    if (ret < 0) {
-        //if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return -1;
-        //printf("recv error : %d, ret : %d\n", errno, ret);
-
+    int ret = recv(fd, buf, len, flags);  // 读取数据
+    if (ret <= 0) {  // 读取失败
+        if (ret == 0) {  // 对端正常关闭连接
+            printf("Connection closed by peer\n");
+        } else {  // 错误处理
+            if (errno == ECONNRESET) {  // 对端非正常关闭
+                printf("Connection reset by peer\n");
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 数据暂时不可用，非阻塞模式下
+            } else {
+                printf("recv error: %s\n", strerror(errno));
+            }
+        }
     }
+
     return ret;
 }
 
