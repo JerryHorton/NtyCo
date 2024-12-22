@@ -155,12 +155,11 @@ int nty_socket(int domain, int type, int protocol) {
 /* 非阻塞模式的 accept */
 int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
     int sockfd;
-    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;
     while (1) {
         struct pollfd pfd;
         pfd.fd = fd;  // 监听的文件描述符，即服务器的监听套接字
         pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 检查是否有连接请求
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
 
         sockfd = accept(fd, addr, len);  // 尝试接受客户端连接
         if (sockfd < 0) {  // accept 调用失败
@@ -198,8 +197,8 @@ int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
     while (1) {
         struct pollfd pfd;
         pfd.fd = fd;  // 监听的文件描述符，即用于连接的套接字
-        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 检查对端是否可以接受连接请求
+        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
         ret = connect(fd, addr, addrlen);  // 发起连接
         if (ret == 0) {  // 连接成功
@@ -221,8 +220,8 @@ int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
 ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
     struct pollfd pfd;
     pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
-    pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-    nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 检查对端是否有数据可以读取
+    pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
 
     int ret = recv(fd, buf, len, flags);  // 读取数据
     if (ret <= 0) {  // 读取失败
@@ -242,139 +241,139 @@ ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
     return ret;
 }
 
-
+/* 非阻塞模式的 send */
 ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
-
     int sent = 0;
-
-    int ret = send(fd, ((char *) buf) + sent, len - sent, flags);
-    if (ret == 0) return ret;
-    if (ret > 0) sent += ret;
-
-    while (sent < len) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
-
-        nty_poll_inner(&fds, 1, 1);
-        ret = send(fd, ((char *) buf) + sent, len - sent, flags);
-        //printf("send --> len : %d\n", ret);
-        if (ret <= 0) {
-            break;
+    int ret = send(fd, ((char *) buf) + sent, len - sent, flags);  // 单独尝试发送一次以优化性能
+    if (ret <= 0) {  // 第一次发送失败，检查错误类型
+        if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+            return ret;  // 不可恢复的错误，直接返回
         }
-        sent += ret;
+    } else {
+        sent += ret;  // 累计已发送字节数
     }
 
-    if (ret <= 0 && sent == 0) return ret;
+    while (sent < len) {  // 没有全部发送完毕
+        struct pollfd pfd;
+        pfd.fd = fd;  // 监听的文件描述符，即期望写入数据的套接字
+        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
-    return sent;
+        ret = send(fd, ((char *) buf) + sent, len - sent, flags);
+        printf("send --> len : %d\n", ret);
+        if (ret <= 0) {  // 再次发送失败，检查错误类型
+            if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+                break;  // 不可恢复的错误，退出循环
+            }
+        } else {
+            sent += ret;  // 累计已发送字节数
+        }
+    }
+    if (ret <= 0 && sent == 0) {  // 未发送任何数据，返回错误
+        return ret;
+    }
+
+    return sent;  // 返回已成功发送的字节数
 }
 
-
+/* 非阻塞模式的 sendto */
 ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
                    const struct sockaddr *dest_addr, socklen_t addrlen) {
-
-
     int sent = 0;
-
     while (sent < len) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
+        struct pollfd pfd;
+        pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
-        nty_poll_inner(&fds, 1, 1);
         int ret = sendto(fd, ((char *) buf) + sent, len - sent, flags, dest_addr, addrlen);
-        if (ret <= 0) {
-            if (errno == EAGAIN) continue;
-            else if (errno == ECONNRESET) {
-                return ret;
+        if (ret <= 0) {  // 发送失败，检查错误类型
+            if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+                break;  // 不可恢复的错误，退出循环
             }
-            printf("send errno : %d, ret : %d\n", errno, ret);
-            assert(0);
+        } else {
+            sent += ret;  // 累计已发送字节数
         }
-        sent += ret;
     }
-    return sent;
 
+    return sent;  // 返回成功发送的字节数
 }
 
+/* 非阻塞模式的 recvfrom */
 ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                      struct sockaddr *src_addr, socklen_t *addrlen) {
-
-    struct pollfd fds;
-    fds.fd = fd;
-    fds.events = POLLIN | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
+    struct pollfd pfd;
+    pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+    pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写读
 
     int ret = recvfrom(fd, buf, len, flags, src_addr, addrlen);
-    if (ret < 0) {
-        if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return 0;
-
-        printf("recv error : %d, ret : %d\n", errno, ret);
-        assert(0);
+    if (ret <= 0) {  // 读取失败
+        if (ret == 0) {  // 对端正常关闭连接
+            printf("Connection closed by peer\n");
+        } else {  // 错误处理
+            if (errno == ECONNRESET) {  // 对端非正常关闭
+                printf("Connection reset by peer\n");
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 数据暂时不可用，非阻塞模式下
+            } else {
+                printf("recv error: %s\n", strerror(errno));
+            }
+        }
     }
-    return ret;
 
+    return ret;
 }
 
+/* 关闭文件描述符 */
 int nty_close(int fd) {
-#if 0
-    nty_schedule *sched = nty_coroutine_get_sched();
-    nty_coroutine *co = sched->curr_thread;
+#if 1
+    nty_schedule *sched = nty_coroutine_get_sched();  // 获取当前线程的调度器
+    nty_coroutine *co = sched->curr_thread;  // 获取当前协程
     if (co) {
-        TAILQ_INSERT_TAIL(&nty_coroutine_get_sched()->ready, co, ready_next);
-        co->status |= BIT(NTY_COROUTINE_STATUS_FDEOF);
+        co->status |= BIT(NTY_COROUTINE_STATUS_FDEOF);  // 更新协程状态
+        TAILQ_INSERT_TAIL(&nty_coroutine_get_sched()->ready, co, ready_next);  // 将协程插入就绪队列
     }
 #endif
     return close(fd);
 }
 
-
 #ifdef  COROUTINE_HOOK
 
+// 保存相应系统调用的地址
 socket_t socket_f = NULL;
-
 read_t read_f = NULL;
 recv_t recv_f = NULL;
 recvfrom_t recvfrom_f = NULL;
-
 write_t write_f = NULL;
 send_t send_f = NULL;
 sendto_t sendto_f = NULL;
-
 accept_t accept_f = NULL;
-close_t close_f = NULL;
 connect_t connect_f = NULL;
+close_t close_f = NULL;
 
-
+/* 钩子函数，动态加载系统中的函数地址 */
 int init_hook(void) {
-
     socket_f = (socket_t) dlsym(RTLD_NEXT, "socket");
-
     read_f = (read_t) dlsym(RTLD_NEXT, "read");
     recv_f = (recv_t) dlsym(RTLD_NEXT, "recv");
     recvfrom_f = (recvfrom_t) dlsym(RTLD_NEXT, "recvfrom");
-
     write_f = (write_t) dlsym(RTLD_NEXT, "write");
     send_f = (send_t) dlsym(RTLD_NEXT, "send");
     sendto_f = (sendto_t) dlsym(RTLD_NEXT, "sendto");
-
     accept_f = (accept_t) dlsym(RTLD_NEXT, "accept");
     close_f = (close_t) dlsym(RTLD_NEXT, "close");
     connect_f = (connect_t) dlsym(RTLD_NEXT, "connect");
-
 }
 
 
 int socket(int domain, int type, int protocol) {
-
-    if (!socket_f) init_hook();
-
+    if (!socket_f) {  // 初始化钩子
+        init_hook();
+    }
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return socket_f(domain, type, protocol);
+    if (sched == NULL) {  // 非协程环境
+        return socket_f(domain, type, protocol);  // 调用原始 socket
     }
 
     int fd = socket_f(domain, type, protocol);
@@ -394,8 +393,9 @@ int socket(int domain, int type, int protocol) {
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
-
-    if (!read_f) init_hook();
+    if (!read_f) {
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {
@@ -658,17 +658,4 @@ int connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
     return ret;
 }
 
-
 #endif
-
-
-
-
-
-
-
-
-
-
-
-

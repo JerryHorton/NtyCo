@@ -110,7 +110,7 @@ typedef enum {
     NTY_COROUTINE_STATUS_SLEEPING,
     // 协程的超时时间已到，通常是协程在等待某些事件时设置了超时，超时后进入该状态
     NTY_COROUTINE_STATUS_EXPIRED,
-    // 协程正在等待某个文件描述符，但该描述符已到达文件结束符（EOF）当从文件或流中读取数据时，如果没有更多数据可以读取，协程会进入此状态。
+    // 协程所等待的文件描述符已到达文件结束符（EOF）当从文件或流中读取数据时，如果没有更多数据可以读取，协程会进入此状态
     NTY_COROUTINE_STATUS_FDEOF,
     // 协程被设置为“分离”状态，这意味着协程不会再与其他协程进行同步
     NTY_COROUTINE_STATUS_DETACH,
@@ -536,7 +536,7 @@ ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                      struct sockaddr *src_addr, socklen_t *addrlen);
 
 
-#define COROUTINE_HOOK
+#define COROUTINE_HOOK      1
 
 #ifdef  COROUTINE_HOOK
 
