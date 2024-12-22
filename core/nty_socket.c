@@ -130,7 +130,7 @@ static int nty_poll_inner(struct pollfd *fds, nfds_t nfds, int timeout) {
 
 /* 创建并初始化套接字 */
 int nty_socket(int domain, int type, int protocol) {
-    int fd = socket(domain, type, protocol);  // 创建一个新的套接字
+    int fd = socket_f(domain, type, protocol);  // 创建一个新的套接字
     if (fd == -1) {  // 创建失败
         printf("Failed to create a new socket\n");
         return -1;
@@ -161,7 +161,7 @@ int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
         pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
         nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
 
-        sockfd = accept(fd, addr, len);  // 尝试接受客户端连接
+        sockfd = accept_f(fd, addr, len);  // 尝试接受客户端连接
         if (sockfd < 0) {  // accept 调用失败
             if (errno == EAGAIN) {  // 如果是资源暂时不可用（EAGAIN），继续尝试
                 continue;
@@ -200,7 +200,7 @@ int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
         pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
         nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
-        ret = connect(fd, addr, addrlen);  // 发起连接
+        ret = connect_f(fd, addr, addrlen);  // 发起连接
         if (ret == 0) {  // 连接成功
             break;
         }
@@ -223,7 +223,7 @@ ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
     pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
     nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
 
-    int ret = recv(fd, buf, len, flags);  // 读取数据
+    int ret = recv_f(fd, buf, len, flags);  // 读取数据
     if (ret <= 0) {  // 读取失败
         if (ret == 0) {  // 对端正常关闭连接
             printf("Connection closed by peer\n");
@@ -244,7 +244,7 @@ ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
 /* 非阻塞模式的 send */
 ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
     int sent = 0;
-    int ret = send(fd, ((char *) buf) + sent, len - sent, flags);  // 单独尝试发送一次以优化性能
+    int ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);  // 单独尝试发送一次以优化性能
     if (ret <= 0) {  // 第一次发送失败，检查错误类型
         if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
             return ret;  // 不可恢复的错误，直接返回
@@ -259,7 +259,7 @@ ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
         pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
         nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
-        ret = send(fd, ((char *) buf) + sent, len - sent, flags);
+        ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);
         printf("send --> len : %d\n", ret);
         if (ret <= 0) {  // 再次发送失败，检查错误类型
             if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
@@ -286,7 +286,7 @@ ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
         pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
         nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
 
-        int ret = sendto(fd, ((char *) buf) + sent, len - sent, flags, dest_addr, addrlen);
+        int ret = sendto_f(fd, ((char *) buf) + sent, len - sent, flags, dest_addr, addrlen);
         if (ret <= 0) {  // 发送失败，检查错误类型
             if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
                 break;  // 不可恢复的错误，退出循环
@@ -307,7 +307,7 @@ ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
     pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
     nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写读
 
-    int ret = recvfrom(fd, buf, len, flags, src_addr, addrlen);
+    int ret = recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
     if (ret <= 0) {  // 读取失败
         if (ret == 0) {  // 对端正常关闭连接
             printf("Connection closed by peer\n");
@@ -335,12 +335,13 @@ int nty_close(int fd) {
         TAILQ_INSERT_TAIL(&nty_coroutine_get_sched()->ready, co, ready_next);  // 将协程插入就绪队列
     }
 #endif
-    return close(fd);
+    return close_f(fd);
 }
 
 #ifdef  COROUTINE_HOOK
 
 // 保存相应系统调用的地址
+
 socket_t socket_f = NULL;
 read_t read_f = NULL;
 recv_t recv_f = NULL;
@@ -366,7 +367,7 @@ int init_hook(void) {
     connect_f = (connect_t) dlsym(RTLD_NEXT, "connect");
 }
 
-
+/* 扩展的 socket */
 int socket(int domain, int type, int protocol) {
     if (!socket_f) {  // 初始化钩子
         init_hook();
@@ -376,30 +377,16 @@ int socket(int domain, int type, int protocol) {
         return socket_f(domain, type, protocol);  // 调用原始 socket
     }
 
-    int fd = socket_f(domain, type, protocol);
-    if (fd == -1) {
-        printf("Failed to create a new socket\n");
-        return -1;
-    }
-    int ret = fcntl(fd, F_SETFL, O_NONBLOCK);
-    if (ret == -1) {
-        close(ret);
-        return -1;
-    }
-    int reuse = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));
-
-    return fd;
+    return nty_socket(domain, type, protocol);  // 调用协程环境下的扩展 nty_socket
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
-    if (!read_f) {
+    if (!read_f) {  // 初始化钩子
         init_hook();
     }
-
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return read_f(fd, buf, count);
+    if (sched == NULL) {  // 非协程环境
+        return read_f(fd, buf, count);  // 调用原始 read
     }
 
     struct pollfd fds;
