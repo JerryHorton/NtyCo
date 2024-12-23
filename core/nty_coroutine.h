@@ -464,7 +464,7 @@ int nty_accept(int fd, struct sockaddr *addr, socklen_t *len);
  * @param buf 接收数据的缓冲区
  * @param len 要接收的最大字节数
  * @param flags 标志位，通常为 0
- * @return 成功时返回接收到的字节数；失败时返回 -1
+ * @return 成功时返回接收到的字节数；失败时返回 -1 | 0
  */
 ssize_t nty_recv(int fd, void *buf, size_t len, int flags);
 
@@ -475,14 +475,34 @@ ssize_t nty_recv(int fd, void *buf, size_t len, int flags);
  * @param buf 包含要发送数据的缓冲区
  * @param len 要发送的字节数
  * @param flags 标志位，通常为 0
- * @return 成功时返回实际发送的字节数；失败时返回 -1
+ * @return 成功时返回实际发送的字节数；失败时返回 -1 | 0
  */
 ssize_t nty_send(int fd, const void *buf, size_t len, int flags);
 
 /**
- * 关闭套接字
+ * 向指定的文件描述符发送数据
  *
- * @param fd 要关闭的套接字文件描述符
+ * @param fd 文件描述符
+ * @param buf 包含要发送数据的缓冲区
+ * @param count 要发送的字节数
+ * @return 成功时返回实际发送的字节数；失败时返回 -1 | 0
+ */
+ssize_t nty_write(int fd, const void *buf, size_t count);
+
+/**
+ * 从指定的文件描述符读取数据
+ *
+ * @param fd 文件描述符
+ * @param buf 接收数据的缓冲区
+ * @param count 要接收的最大字节数
+ * @return 成功时返回接收到的字节数；失败时返回 -1 | 0
+ */
+ssize_t nty_read(int fd, void *buf, size_t count);
+
+/**
+ * 关闭文件描述符
+ *
+ * @param fd 要关闭的文件描述符
  * @return 成功时返回 0；失败时返回 -1
  */
 int nty_close(int fd);

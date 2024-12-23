@@ -156,10 +156,10 @@ int nty_socket(int domain, int type, int protocol) {
 int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
     int sockfd;
     while (1) {
-        struct pollfd pfd;
-        pfd.fd = fd;  // 监听的文件描述符，即服务器的监听套接字
-        pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
+        struct pollfd fds;
+        fds.fd = fd;  // 监听的文件描述符，即服务器的监听套接字
+        fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+        nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可读
 
         sockfd = accept_f(fd, addr, len);  // 尝试接受客户端连接
         if (sockfd < 0) {  // accept 调用失败
@@ -192,13 +192,13 @@ int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
 }
 
 /* 非阻塞模式的 connect */
-int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
+int nty_connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
     int ret;
     while (1) {
-        struct pollfd pfd;
-        pfd.fd = fd;  // 监听的文件描述符，即用于连接的套接字
-        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
+        struct pollfd fds;
+        fds.fd = fd;  // 监听的文件描述符，即用于连接的套接字
+        fds.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可写
 
         ret = connect_f(fd, addr, addrlen);  // 发起连接
         if (ret == 0) {  // 连接成功
@@ -218,10 +218,10 @@ int nty_connect(int fd, struct sockaddr *addr, socklen_t addrlen) {
 
 /* 非阻塞模式的 recv */
 ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
-    struct pollfd pfd;
-    pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
-    pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-    nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可读
+    struct pollfd fds;
+    fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+    fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可读
 
     int ret = recv_f(fd, buf, len, flags);  // 读取数据
     if (ret <= 0) {  // 读取失败
@@ -254,13 +254,12 @@ ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
     }
 
     while (sent < len) {  // 没有全部发送完毕
-        struct pollfd pfd;
-        pfd.fd = fd;  // 监听的文件描述符，即期望写入数据的套接字
-        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
+        struct pollfd fds;
+        fds.fd = fd;  // 监听的文件描述符，即期望写入数据的套接字
+        fds.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可写
 
         ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);
-        printf("send --> len : %d\n", ret);
         if (ret <= 0) {  // 再次发送失败，检查错误类型
             if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
                 break;  // 不可恢复的错误，退出循环
@@ -281,10 +280,10 @@ ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
                    const struct sockaddr *dest_addr, socklen_t addrlen) {
     int sent = 0;
     while (sent < len) {
-        struct pollfd pfd;
-        pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
-        pfd.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
-        nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写
+        struct pollfd fds;
+        fds.fd = fd;  // 监听的文件描述符，即期望写入数据的套接字
+        fds.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可写事件、错误事件和挂起事件
+        nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可写
 
         int ret = sendto_f(fd, ((char *) buf) + sent, len - sent, flags, dest_addr, addrlen);
         if (ret <= 0) {  // 发送失败，检查错误类型
@@ -302,10 +301,10 @@ ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
 /* 非阻塞模式的 recvfrom */
 ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                      struct sockaddr *src_addr, socklen_t *addrlen) {
-    struct pollfd pfd;
-    pfd.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
-    pfd.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
-    nty_poll_inner(&pfd, 1, NO_TIMEOUT);  // 等待套接字可写读
+    struct pollfd fds;
+    fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+    fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可读
 
     int ret = recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
     if (ret <= 0) {  // 读取失败
@@ -323,6 +322,63 @@ ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
     }
 
     return ret;
+}
+
+/* 非阻塞模式的 read */
+ssize_t nty_read(int fd, void *buf, size_t count) {
+    struct pollfd fds;
+    fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
+    fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+    nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可读
+
+    int ret = read_f(fd, buf, count);
+    if (ret <= 0) {  // 读取失败
+        if (ret == 0) {  // 对端正常关闭连接
+            printf("Connection closed by peer\n");
+        } else {  // 错误处理
+            if (errno == ECONNRESET) {  // 对端非正常关闭
+                printf("Connection reset by peer\n");
+            } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 数据暂时不可用，非阻塞模式下
+            } else {
+                printf("read error: %s\n", strerror(errno));
+            }
+        }
+    }
+}
+
+/* 非阻塞模式的 write */
+ssize_t nty_write(int fd, const void *buf, size_t count) {
+    int sent = 0;
+    int ret = write_f(fd, ((char *) buf) + sent, count - sent);
+    if (ret <= 0) {  // 第一次发送失败，检查错误类型
+        if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+            return ret;  // 不可恢复的错误，直接返回
+        }
+    } else {
+        sent += ret;  // 累计已发送字节数
+    }
+
+    while (sent < count) {  // 没有全部发送完毕
+        struct pollfd fds;
+        fds.fd = fd;  // 监听的文件描述符，即期望写入数据的套接字
+        fds.events = POLLOUT | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
+        nty_poll_inner(&fds, 1, NO_TIMEOUT);  // 等待套接字可写
+
+        ret = write_f(fd, ((char *) buf) + sent, count - sent);
+        if (ret <= 0) {  // 再次发送失败，检查错误类型
+            if (ret == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+                break;  // 不可恢复的错误，退出循环
+            }
+        } else {
+            sent += ret;  // 累计已发送字节数
+        }
+    }
+    if (ret <= 0 && sent == 0) {  // 未发送任何数据，返回错误
+        return ret;
+    }
+
+    return sent;  // 返回已成功发送的字节数
 }
 
 /* 关闭文件描述符 */
@@ -369,9 +425,10 @@ int init_hook(void) {
 
 /* 扩展的 socket */
 int socket(int domain, int type, int protocol) {
-    if (!socket_f) {  // 初始化钩子
+    if (socket_f == NULL) {  // 初始化钩子
         init_hook();
     }
+
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return socket_f(domain, type, protocol);  // 调用原始 socket
@@ -380,269 +437,132 @@ int socket(int domain, int type, int protocol) {
     return nty_socket(domain, type, protocol);  // 调用协程环境下的扩展 nty_socket
 }
 
+/* 扩展的 read */
 ssize_t read(int fd, void *buf, size_t count) {
-    if (!read_f) {  // 初始化钩子
+    if (read_f == NULL) {  // 初始化钩子
         init_hook();
     }
+
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return read_f(fd, buf, count);  // 调用原始 read
     }
 
-    struct pollfd fds;
-    fds.fd = fd;
-    fds.events = POLLIN | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
-
-    int ret = read_f(fd, buf, count);
-    if (ret < 0) {
-        //if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return -1;
-        //printf("recv error : %d, ret : %d\n", errno, ret);
-
-    }
-    return ret;
+    return nty_read(fd, buf, count);  // 调用协程环境下的扩展 nty_read
 }
 
+/* 扩展的 recv */
 ssize_t recv(int fd, void *buf, size_t len, int flags) {
-
-    if (!recv_f) init_hook();
+    if (recv_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return recv_f(fd, buf, len, flags);
+    if (sched == NULL) {  // 非协程环境
+        return recv_f(fd, buf, len, flags);  // 调用原始 recv
     }
 
-    struct pollfd fds;
-    fds.fd = fd;
-    fds.events = POLLIN | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
-
-    int ret = recv_f(fd, buf, len, flags);
-    if (ret < 0) {
-        //if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return -1;
-        //printf("recv error : %d, ret : %d\n", errno, ret);
-
-    }
-    return ret;
+    return nty_recv(fd, buf, len, flags);  // 调用协程环境下的扩展 nty_recv
 }
 
-
+/* 扩展的 recvfrom */
 ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
                  struct sockaddr *src_addr, socklen_t *addrlen) {
-
-    if (!recvfrom_f) init_hook();
+    if (recvfrom_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
+    if (sched == NULL) {  // 非协程环境
+        return recvfrom_f(fd, buf, len, flags, src_addr, addrlen);  // 调用原始 recvfrom
     }
 
-    struct pollfd fds;
-    fds.fd = fd;
-    fds.events = POLLIN | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
-
-    int ret = recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
-    if (ret < 0) {
-        if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return 0;
-
-        printf("recv error : %d, ret : %d\n", errno, ret);
-        assert(0);
-    }
-    return ret;
-
+    return nty_recvfrom(fd, buf, len, flags, src_addr, addrlen);  // 调用协程环境下的扩展 nty_recvfrom
 }
 
-
+/* 扩展的 write */
 ssize_t write(int fd, const void *buf, size_t count) {
-
-    if (!write_f) init_hook();
+    if (write_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return write_f(fd, buf, count);
+    if (sched == NULL) {  // 非协程环境
+        return write_f(fd, buf, count);  // 调用原始 write
     }
 
-    int sent = 0;
-
-    int ret = write_f(fd, ((char *) buf) + sent, count - sent);
-    if (ret == 0) return ret;
-    if (ret > 0) sent += ret;
-
-    while (sent < count) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
-
-        nty_poll_inner(&fds, 1, 1);
-        ret = write_f(fd, ((char *) buf) + sent, count - sent);
-        //printf("send --> len : %d\n", ret);
-        if (ret <= 0) {
-            break;
-        }
-        sent += ret;
-    }
-
-    if (ret <= 0 && sent == 0) return ret;
-
-    return sent;
+    return nty_write(fd, buf, count);  // 调用协程环境下的扩展 nty_write
 }
 
-
+/* 扩展的 send */
 ssize_t send(int fd, const void *buf, size_t len, int flags) {
-
-    if (!send_f) init_hook();
+    if (send_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return send_f(fd, buf, len, flags);
+    if (sched == NULL) {  // 非协程环境
+        return send_f(fd, buf, len, flags);  // 调用原始 send
     }
 
-    int sent = 0;
-
-    int ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);
-    if (ret == 0) return ret;
-    if (ret > 0) sent += ret;
-
-    while (sent < len) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
-
-        nty_poll_inner(&fds, 1, 1);
-        ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);
-        //printf("send --> len : %d\n", ret);
-        if (ret <= 0) {
-            break;
-        }
-        sent += ret;
-    }
-
-    if (ret <= 0 && sent == 0) return ret;
-
-    return sent;
+    return nty_send(fd, buf, len, flags);  // 调用协程环境下的扩展 nty_send
 }
 
-ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+/* 扩展的 sendto */
+ssize_t sendto(int fd, const void *buf, size_t len, int flags,
                const struct sockaddr *dest_addr, socklen_t addrlen) {
-
-    if (!sendto_f) init_hook();
+    if (sendto_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return sendto_f(sockfd, buf, len, flags, dest_addr, addrlen);
+    if (sched == NULL) {  // 非协程环境
+        return sendto_f(fd, buf, len, flags, dest_addr, addrlen);  // 调用原始 sendto
     }
 
-    struct pollfd fds;
-    fds.fd = sockfd;
-    fds.events = POLLOUT | POLLERR | POLLHUP;
-
-    nty_poll_inner(&fds, 1, 1);
-
-    int ret = sendto_f(sockfd, buf, len, flags, dest_addr, addrlen);
-    if (ret < 0) {
-        if (errno == EAGAIN) return ret;
-        if (errno == ECONNRESET) return 0;
-
-        printf("recv error : %d, ret : %d\n", errno, ret);
-        assert(0);
-    }
-    return ret;
-
+    return nty_sendto(fd, buf, len, flags, dest_addr, addrlen);  // 调用协程环境下的扩展 nty_sendto
 }
 
-
+/* 扩展的 accept */
 int accept(int fd, struct sockaddr *addr, socklen_t *len) {
-
-    if (!accept_f) init_hook();
+    if (accept_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return accept_f(fd, addr, len);
+    if (sched == NULL) {  // 非协程环境
+        return accept_f(fd, addr, len);  // 调用原始 accept
     }
 
-    int sockfd = -1;
-    int timeout = 1;
-    nty_coroutine *co = nty_coroutine_get_sched()->curr_thread;
-
-    while (1) {
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLIN | POLLERR | POLLHUP;
-        nty_poll_inner(&fds, 1, timeout);
-
-        sockfd = accept_f(fd, addr, len);
-        if (sockfd < 0) {
-            if (errno == EAGAIN) {
-                continue;
-            } else if (errno == ECONNABORTED) {
-                printf("accept : ECONNABORTED\n");
-
-            } else if (errno == EMFILE || errno == ENFILE) {
-                printf("accept : EMFILE || ENFILE\n");
-            }
-            return -1;
-        } else {
-            break;
-        }
-    }
-
-    int ret = fcntl(sockfd, F_SETFL, O_NONBLOCK);
-    if (ret == -1) {
-        close(sockfd);
-        return -1;
-    }
-    int reuse = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse, sizeof(reuse));
-
-    return sockfd;
+    return nty_accept(fd, addr, len);  // 调用协程环境下的扩展 nty_accept
 }
 
-int close(int fd) {
-
-    if (!close_f) init_hook();
-
-    return close_f(fd);
-}
-
-
+/* 扩展的 connect */
 int connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
-
-    if (!connect_f) init_hook();
+    if (!connect_f) {  // 初始化钩子
+        init_hook();
+    }
 
     nty_schedule * sched = nty_coroutine_get_sched();
-    if (sched == NULL) {
-        return connect_f(fd, addr, addrlen);
+    if (sched == NULL) {  // 非协程环境
+        return connect_f(fd, addr, addrlen);  // 调用原始 connect
     }
 
-    int ret = 0;
+    return nty_connect(fd, addr, addrlen);  // 调用协程环境下的扩展 nty_connect
+}
 
-    while (1) {
-
-        struct pollfd fds;
-        fds.fd = fd;
-        fds.events = POLLOUT | POLLERR | POLLHUP;
-        nty_poll_inner(&fds, 1, 1);
-
-        ret = connect_f(fd, addr, addrlen);
-        if (ret == 0) break;
-
-        if (ret == -1 && (errno == EAGAIN ||
-                          errno == EWOULDBLOCK ||
-                          errno == EINPROGRESS)) {
-            continue;
-        } else {
-            break;
-        }
+/* 扩展的 close */
+int close(int fd) {
+    if (close_f == NULL) {  // 初始化钩子
+        init_hook();
     }
 
-    return ret;
+    nty_schedule * sched = nty_coroutine_get_sched();
+    if (sched == NULL) {  // 非协程环境
+        return accept_f(fd, addr, len);  // 调用原始 close
+    }
+
+    return nty_close(fd);  // 调用协程环境下的扩展 nty_close
 }
 
 #endif
