@@ -49,7 +49,7 @@ static pthread_once_t sched_key_once = PTHREAD_ONCE_INIT;  // 保证初始化逻
 
 // https://github.com/halayli/lthread/blob/master/src/lthread.c#L58
 
-#ifdef _USE_UCONTEXT // 基于 _USE_UCONTEXT 的实现
+#ifdef _USE_UCONTEXT  // 基于 _USE_UCONTEXT 的实现
 
 /* 保存当前协程的栈内容到协程的结构体（nty_coroutine）中 */
 static void _save_stack(nty_coroutine *co) {  // 注意栈的内存分配是从高地址向低地址增长的
