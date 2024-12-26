@@ -556,7 +556,7 @@ ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                      struct sockaddr *src_addr, socklen_t *addrlen);
 
 
-#define COROUTINE_HOOK      1
+#define COROUTINE_HOOK
 
 #ifdef  COROUTINE_HOOK
 
