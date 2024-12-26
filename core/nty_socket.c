@@ -44,6 +44,36 @@
 
 #include "nty_coroutine.h"
 
+#ifdef  COROUTINE_HOOK
+
+// 保存相应系统调用的地址
+
+socket_t socket_f = NULL;
+read_t read_f = NULL;
+recv_t recv_f = NULL;
+recvfrom_t recvfrom_f = NULL;
+write_t write_f = NULL;
+send_t send_f = NULL;
+sendto_t sendto_f = NULL;
+accept_t accept_f = NULL;
+connect_t connect_f = NULL;
+close_t close_f = NULL;
+
+/* 钩子函数，动态加载系统中的函数地址 */
+int init_hook(void) {
+    socket_f = (socket_t) dlsym(RTLD_NEXT, "socket");
+    read_f = (read_t) dlsym(RTLD_NEXT, "read");
+    recv_f = (recv_t) dlsym(RTLD_NEXT, "recv");
+    recvfrom_f = (recvfrom_t) dlsym(RTLD_NEXT, "recvfrom");
+    write_f = (write_t) dlsym(RTLD_NEXT, "write");
+    send_f = (send_t) dlsym(RTLD_NEXT, "send");
+    sendto_f = (sendto_t) dlsym(RTLD_NEXT, "sendto");
+    accept_f = (accept_t) dlsym(RTLD_NEXT, "accept");
+    close_f = (close_t) dlsym(RTLD_NEXT, "close");
+    connect_f = (connect_t) dlsym(RTLD_NEXT, "connect");
+    return 0;
+}
+
 /* 将 poll 事件标志转换为 epoll 事件标志 */
 static uint32_t nty_pollevent_2epoll(short events) {
     uint32_t e = 0;
@@ -130,6 +160,9 @@ static int nty_poll_inner(struct pollfd *fds, nfds_t nfds, int timeout) {
 
 /* 创建并初始化套接字 */
 int nty_socket(int domain, int type, int protocol) {
+    if (socket_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int fd = socket_f(domain, type, protocol);  // 创建一个新的套接字
     if (fd == -1) {  // 创建失败
         printf("Failed to create a new socket\n");
@@ -154,6 +187,9 @@ int nty_socket(int domain, int type, int protocol) {
 
 /* 非阻塞模式的 accept */
 int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
+    if (accept_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int sockfd;
     while (1) {
         struct pollfd fds;
@@ -193,6 +229,9 @@ int nty_accept(int fd, struct sockaddr *addr, socklen_t *len) {
 
 /* 非阻塞模式的 connect */
 int nty_connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
+    if (connect_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int ret;
     while (1) {
         struct pollfd fds;
@@ -218,6 +257,9 @@ int nty_connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
 
 /* 非阻塞模式的 recv */
 ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
+    if (recv_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     struct pollfd fds;
     fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
     fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
@@ -243,6 +285,9 @@ ssize_t nty_recv(int fd, void *buf, size_t len, int flags) {
 
 /* 非阻塞模式的 send */
 ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
+    if (send_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int sent = 0;
     int ret = send_f(fd, ((char *) buf) + sent, len - sent, flags);  // 单独尝试发送一次以优化性能
     if (ret <= 0) {  // 第一次发送失败，检查错误类型
@@ -278,6 +323,9 @@ ssize_t nty_send(int fd, const void *buf, size_t len, int flags) {
 /* 非阻塞模式的 sendto */
 ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
                    const struct sockaddr *dest_addr, socklen_t addrlen) {
+    if (sendto_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int sent = 0;
     while (sent < len) {
         struct pollfd fds;
@@ -301,6 +349,9 @@ ssize_t nty_sendto(int fd, const void *buf, size_t len, int flags,
 /* 非阻塞模式的 recvfrom */
 ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
                      struct sockaddr *src_addr, socklen_t *addrlen) {
+    if (recvfrom_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     struct pollfd fds;
     fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
     fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
@@ -326,6 +377,9 @@ ssize_t nty_recvfrom(int fd, void *buf, size_t len, int flags,
 
 /* 非阻塞模式的 read */
 ssize_t nty_read(int fd, void *buf, size_t count) {
+    if (read_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     struct pollfd fds;
     fds.fd = fd;  // 监听的文件描述符，即期望读出数据的套接字
     fds.events = POLLIN | POLLERR | POLLHUP;  // 设置监听事件，包括可读事件、错误事件和挂起事件
@@ -345,10 +399,14 @@ ssize_t nty_read(int fd, void *buf, size_t count) {
             }
         }
     }
+    return ret;
 }
 
 /* 非阻塞模式的 write */
 ssize_t nty_write(int fd, const void *buf, size_t count) {
+    if (write_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
     int sent = 0;
     int ret = write_f(fd, ((char *) buf) + sent, count - sent);
     if (ret <= 0) {  // 第一次发送失败，检查错误类型
@@ -383,6 +441,9 @@ ssize_t nty_write(int fd, const void *buf, size_t count) {
 
 /* 关闭文件描述符 */
 int nty_close(int fd) {
+    if (close_f == NULL) {  // 初始化钩子
+        init_hook();
+    }
 #if 1
     nty_schedule *sched = nty_coroutine_get_sched();  // 获取当前线程的调度器
     nty_coroutine *co = sched->curr_thread;  // 获取当前协程
@@ -394,41 +455,8 @@ int nty_close(int fd) {
     return close_f(fd);
 }
 
-#ifdef  COROUTINE_HOOK
-
-// 保存相应系统调用的地址
-
-socket_t socket_f = NULL;
-read_t read_f = NULL;
-recv_t recv_f = NULL;
-recvfrom_t recvfrom_f = NULL;
-write_t write_f = NULL;
-send_t send_f = NULL;
-sendto_t sendto_f = NULL;
-accept_t accept_f = NULL;
-connect_t connect_f = NULL;
-close_t close_f = NULL;
-
-/* 钩子函数，动态加载系统中的函数地址 */
-int init_hook(void) {
-    socket_f = (socket_t) dlsym(RTLD_NEXT, "socket");
-    read_f = (read_t) dlsym(RTLD_NEXT, "read");
-    recv_f = (recv_t) dlsym(RTLD_NEXT, "recv");
-    recvfrom_f = (recvfrom_t) dlsym(RTLD_NEXT, "recvfrom");
-    write_f = (write_t) dlsym(RTLD_NEXT, "write");
-    send_f = (send_t) dlsym(RTLD_NEXT, "send");
-    sendto_f = (sendto_t) dlsym(RTLD_NEXT, "sendto");
-    accept_f = (accept_t) dlsym(RTLD_NEXT, "accept");
-    close_f = (close_t) dlsym(RTLD_NEXT, "close");
-    connect_f = (connect_t) dlsym(RTLD_NEXT, "connect");
-}
-
 /* 扩展的 socket */
 int socket(int domain, int type, int protocol) {
-    if (socket_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return socket_f(domain, type, protocol);  // 调用原始 socket
@@ -439,10 +467,6 @@ int socket(int domain, int type, int protocol) {
 
 /* 扩展的 read */
 ssize_t read(int fd, void *buf, size_t count) {
-    if (read_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return read_f(fd, buf, count);  // 调用原始 read
@@ -453,10 +477,6 @@ ssize_t read(int fd, void *buf, size_t count) {
 
 /* 扩展的 recv */
 ssize_t recv(int fd, void *buf, size_t len, int flags) {
-    if (recv_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return recv_f(fd, buf, len, flags);  // 调用原始 recv
@@ -468,10 +488,6 @@ ssize_t recv(int fd, void *buf, size_t len, int flags) {
 /* 扩展的 recvfrom */
 ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
                  struct sockaddr *src_addr, socklen_t *addrlen) {
-    if (recvfrom_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return recvfrom_f(fd, buf, len, flags, src_addr, addrlen);  // 调用原始 recvfrom
@@ -482,10 +498,6 @@ ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
 
 /* 扩展的 write */
 ssize_t write(int fd, const void *buf, size_t count) {
-    if (write_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return write_f(fd, buf, count);  // 调用原始 write
@@ -496,10 +508,6 @@ ssize_t write(int fd, const void *buf, size_t count) {
 
 /* 扩展的 send */
 ssize_t send(int fd, const void *buf, size_t len, int flags) {
-    if (send_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return send_f(fd, buf, len, flags);  // 调用原始 send
@@ -511,10 +519,6 @@ ssize_t send(int fd, const void *buf, size_t len, int flags) {
 /* 扩展的 sendto */
 ssize_t sendto(int fd, const void *buf, size_t len, int flags,
                const struct sockaddr *dest_addr, socklen_t addrlen) {
-    if (sendto_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return sendto_f(fd, buf, len, flags, dest_addr, addrlen);  // 调用原始 sendto
@@ -525,10 +529,6 @@ ssize_t sendto(int fd, const void *buf, size_t len, int flags,
 
 /* 扩展的 accept */
 int accept(int fd, struct sockaddr *addr, socklen_t *len) {
-    if (accept_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return accept_f(fd, addr, len);  // 调用原始 accept
@@ -539,10 +539,6 @@ int accept(int fd, struct sockaddr *addr, socklen_t *len) {
 
 /* 扩展的 connect */
 int connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
-    if (!connect_f) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
         return connect_f(fd, addr, addrlen);  // 调用原始 connect
@@ -553,13 +549,9 @@ int connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
 
 /* 扩展的 close */
 int close(int fd) {
-    if (close_f == NULL) {  // 初始化钩子
-        init_hook();
-    }
-
     nty_schedule * sched = nty_coroutine_get_sched();
     if (sched == NULL) {  // 非协程环境
-        return accept_f(fd, addr, len);  // 调用原始 close
+        return close_f(fd);  // 调用原始 close
     }
 
     return nty_close(fd);  // 调用协程环境下的扩展 nty_close

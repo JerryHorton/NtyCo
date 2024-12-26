@@ -193,7 +193,7 @@ typedef struct _nty_schedule {
     int num_new_events;  // 新事件的数量
 
     pthread_mutex_t defer_mutex;  // 用于保护协程调度器中的延迟操作的互斥锁
-    pthread_mutex_t resource_mutex  // 用于保护协程调度器中的对资源操作的互斥锁
+    pthread_mutex_t resource_mutex;  // 用于保护协程调度器中的对资源操作的互斥锁
 
     nty_coroutine_queue ready;  // 准备好执行的协程队列
     nty_coroutine_queue defer;  // 被推迟执行的协程队列

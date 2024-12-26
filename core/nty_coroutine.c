@@ -49,7 +49,7 @@ static pthread_once_t sched_key_once = PTHREAD_ONCE_INIT;  // 保证初始化逻
 
 // https://github.com/halayli/lthread/blob/master/src/lthread.c#L58
 
-#ifdef _USE_UCONTEXT  // 基于 _USE_UCONTEXT 的实现
+#ifdef _USE_UCONTEXT // 基于 _USE_UCONTEXT 的实现
 
 /* 保存当前协程的栈内容到协程的结构体（nty_coroutine）中 */
 static void _save_stack(nty_coroutine *co) {  // 注意栈的内存分配是从高地址向低地址增长的
@@ -189,7 +189,7 @@ void nty_coroutine_free(nty_coroutine *co) {
         free(co->stack);
         co->stack = NULL;  // 防止之后误用悬空指针
     }
-    pthread_mutex_unlock(&co.sched->resource_mutex);
+    pthread_mutex_unlock(&co->sched->resource_mutex);
     free(co);  // 释放协程对象本身
 }
 
@@ -234,9 +234,7 @@ int nty_coroutine_resume(nty_coroutine *co) {
         nty_coroutine_init(co);  // 初始化协程（主要是初始化栈、上下文等）
     }
 #ifdef _USE_UCONTEXT
-    else {
-        _load_stack(co);  // 如果使用 ucontext，加载栈信息（恢复协程栈）
-    }
+    _load_stack(co);  // 如果使用 ucontext，加载栈信息（恢复协程栈）
 #endif
     nty_schedule *sched = nty_coroutine_get_sched();  // 获取调度器
     sched->curr_thread = co;  // 设置当前正在执行的线程为该协程
@@ -244,7 +242,7 @@ int nty_coroutine_resume(nty_coroutine *co) {
     swapcontext(&sched->ctx, &co->ctx);  // 使用 ucontext 切换上下文到协程的上下文
 #else
     _switch(&co->ctx, &co->sched->ctx);  // 使用自定义的 _switch 切换到协程的上下文
-    nty_coroutine_madvise(co);  // 执行栈的内存管理优化（如果需要）
+    nty_coroutine_madvise(co);  // 执行栈的内存管理优化（如果需要）*/
 #endif
     sched->curr_thread = NULL;  // 协程执行完后，重置调度器的当前线程
 

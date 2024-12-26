@@ -123,25 +123,20 @@ void server(void *arg) {
 		int *arg = malloc(sizeof(int));
 		*arg = cli_fd;
 		nty_coroutine_create(&read_co, server_reader, arg);
-
 	}
 	
 }
 
-
-
 int main(int argc, char *argv[]) {
-	nty_coroutine *co = NULL;
-
-	int i = 0;
-	unsigned short base_port = 9096;
-	for (i = 0;i < 100;i ++) {
+    nty_coroutine *co = NULL;
+    int i = 0;
+    unsigned short base_port = 9096;
+    for (i = 0;i < 100;i ++) {
 		unsigned short *port = calloc(1, sizeof(unsigned short));
 		*port = base_port + i;
-		nty_coroutine_create(&co, server, port); ////////no run
+		nty_coroutine_create(&co, server, port);
 	}
-
-	nty_schedule_run(); //run
+    nty_schedule_run();
 
 	return 0;
 }
