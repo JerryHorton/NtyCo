@@ -334,8 +334,8 @@ void nty_schedule_run(void) {
             }
         }
         // 3. 处理等待队列中的协程
-       // nty_schedule_epoll(sched);  // 从 epoll 等待队列中获取就绪的事件
-       /*while (sched->num_new_events) {
+       nty_schedule_epoll(sched);  // 从 epoll 等待队列中获取就绪的事件
+       while (sched->num_new_events) {
            int idx = --sched->num_new_events;
            struct epoll_event *ev = sched->eventlist + idx;  // 取出一个事件
            int fd = ev->data.fd;  // 获取关联的文件描述符
@@ -351,7 +351,7 @@ void nty_schedule_run(void) {
                nty_coroutine_resume(co);  // 唤醒并恢复执行
            }
            is_eof = 0;  // 重置为 0
-       }*/
+       }
     }
-    // nty_schedule_free(sched);  // 调度器是完成所有任务，释放调度器资源
+    nty_schedule_free(sched);  // 调度器是完成所有任务，释放调度器资源
 }

@@ -89,7 +89,7 @@ void server(void *arg) {
 	free(arg);
 
 	int fd = nty_socket(AF_INET, SOCK_STREAM, 0);
-	if (fd < 0) return ;
+	if (fd < 0) return;
 
 	struct sockaddr_in local, remote;
 	local.sin_family = AF_INET;
